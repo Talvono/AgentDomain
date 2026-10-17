@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -502,3 +510,282 @@ test('a partial launch failure still terminates the already-started lane', linux
   await stopped(child.pid);
   clean(f);
 });
+
+test('native frameworks use two same-group subshells and check both explicit wait statuses', () => {
+  const native = postbuildLanes('full')[1].script;
+  assert.equal(native.split(') &').length - 1, 2);
+  assert.ok(native.includes('set +m\n(\nexport OTEL_SDK_DISABLED=true'));
+  assert.ok(native.includes('crewai_pid=$!'));
+  assert.ok(native.includes('autogen_pid=$!'));
+  assert.ok(
+    native.includes('if wait "$crewai_pid"; then\n  crewai_status=0\nelse\n  crewai_status=$?\nfi'),
+  );
+  assert.ok(
+    native.includes(
+      'if wait "$autogen_pid"; then\n  autogen_status=0\nelse\n  autogen_status=$?\nfi',
+    ),
+  );
+  assert.ok(
+    native.includes(
+      'if [ "$crewai_status" -ne 0 ]; then\n  exit "$crewai_status"\nfi\nexit "$autogen_status"',
+    ),
+  );
+  assert.ok(
+    native.includes(
+      'unset CREWAI_TELEMETRY_DISABLED CREWAI_TRACING_ENABLED\nexport OTEL_SDK_DISABLED=true PYTHONDONTWRITEBYTECODE=1',
+    ),
+  );
+  assert.ok(native.indexOf('"$install_dir/uv" --version') < native.indexOf('crewai_pid=$!'));
+  assert.doesNotMatch(native, /setsid|set -m|wait\s*(?:\n|$)|wait\s+-n/);
+});
+
+const mockWrapper = '#!/bin/sh\nexec "$PROOF_NODE" "$PROOF_TOOL" "$0" "$@"\n';
+const mockTool = String.raw`
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+const tool = process.argv[2];
+const role = basename(tool);
+const args = process.argv.slice(3);
+const proof = process.env.PROOF_ROOT;
+const wrapper = readFileSync(process.env.PROOF_WRAPPER, 'utf8');
+const framework = basename(dirname(dirname(tool))).replace('agentdomain-', '');
+const group = Number(readFileSync('/proc/self/stat', 'utf8').split(') ')[1].split(' ')[2]);
+const env = Object.fromEntries(['OTEL_SDK_DISABLED', 'CREWAI_TELEMETRY_DISABLED', 'CREWAI_TRACING_ENABLED', 'PYTHONDONTWRITEBYTECODE'].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]]));
+const record = (phase, owner = framework) => appendFileSync(join(proof, 'calls.jsonl'), JSON.stringify({ role, phase, owner, args, env, pid: process.pid, parent: process.ppid, group, path: tool }) + '\n');
+const awaitPeer = async () => {
+  for (let attempt = 0; attempt < 400; attempt++) {
+    if (['crewai', 'autogen'].every((name) => existsSync(join(proof, name + '-start')))) return;
+    await delay(5);
+  }
+  throw new Error('Frameworks did not overlap');
+};
+if (role === 'python' && args[0] === '-m' && args[1] === 'venv') {
+  const target = args[2];
+  const owner = basename(target).replace('agentdomain-', '');
+  mkdirSync(join(target, 'bin'), { recursive: true });
+  writeFileSync(join(target, 'bin/python'), wrapper, { mode: 0o755 });
+  record('venv', owner);
+  if (['crewai', 'autogen'].includes(owner)) {
+    assert.ok(existsSync(join(proof, 'wheel-ready')));
+    assert.ok(existsSync(join(proof, 'uv-ready')));
+    writeFileSync(join(proof, owner + '-start'), JSON.stringify({ shell: process.ppid, group, venv: target }));
+    await awaitPeer();
+    if (process.env.PROOF_HOLD === 'true') {
+      const child = spawn(process.execPath, ['-e', 'process.on("SIGTERM", () => {}); setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+      writeFileSync(join(proof, owner + '-descendant'), String(child.pid));
+      process.on('SIGTERM', () => {});
+      while (true) await delay(1000);
+    }
+  }
+} else if (role === 'python' && args.includes('build-python')) {
+  const output = args[args.indexOf('--output') + 1];
+  mkdirSync(join(output, 'dist'), { recursive: true });
+  for (const name of ['crewai', 'autogen']) writeFileSync(join(output, 'dist/agentdomain_' + name + '-0.11.0-py3-none-any.whl'), 'fixture-wheel-' + name);
+  writeFileSync(join(proof, 'wheel-ready'), output);
+  record('wheel-build', 'setup');
+} else if (role === 'tar') {
+  const target = args[args.indexOf('-C') + 1];
+  writeFileSync(join(target, 'uv'), wrapper, { mode: 0o755 });
+  record('extract', 'setup');
+} else if (role === 'uv' && args[0] === '--version') {
+  writeFileSync(join(proof, 'uv-ready'), 'verified');
+  record('uv-version', 'setup');
+} else if (role === 'curl' || role === 'sha256sum') {
+  record(role, 'setup');
+  if (role === 'sha256sum' && process.env.PROOF_FAIL_SETUP === 'true') process.exit(19);
+} else if (role === 'uv') {
+  assert.ok(existsSync(args[args.indexOf('--python') + 1]));
+  record('dependencies', 'crewai');
+} else if (role === 'python') {
+  if (args[0] === '-m' && args[1] === 'pip' && args[2] === 'check') {
+    record('pip-check');
+    if ([framework, 'both'].includes(process.env.PROOF_FAIL_FRAMEWORK)) process.exit(framework === 'crewai' ? 11 : 17);
+  } else if (args[0] === '-I') record('installed-origin');
+  else if (args[0] === '-m' && args[1] === 'pip') {
+    if (args.at(-1).endsWith('.whl')) assert.ok(existsSync(args.at(-1)));
+    record('install');
+  } else record('artifact-check');
+} else if (role === 'node') {
+  const owner = args.at(-1).includes('crewai') ? 'crewai' : 'autogen';
+  record('complete', owner);
+  const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio: 'ignore' });
+  child.unref();
+  writeFileSync(join(proof, owner + '-descendant'), String(child.pid));
+} else throw new Error('Unexpected mocked tool: ' + role);
+`;
+
+function nativeFixture(t, overrides = {}) {
+  const f = fixture(t);
+  const bin = join(f.directory, 'bin');
+  mkdirSync(bin);
+  const wrapper = join(f.directory, 'wrapper');
+  const tool = join(f.directory, 'mock-tool.mjs');
+  writeFileSync(wrapper, mockWrapper, { mode: 0o755 });
+  writeFileSync(tool, mockTool);
+  for (const name of ['python', 'node', 'curl', 'sha256sum', 'tar'])
+    writeFileSync(join(bin, name), mockWrapper, { mode: 0o755 });
+  const groups = [];
+  t.after(async () => {
+    for (const group of groups) {
+      try {
+        process.kill(-group, 'SIGKILL');
+      } catch (error) {
+        if (error.code !== 'ESRCH') throw error;
+      }
+      await stopped(group);
+    }
+  });
+  const options = {
+    ...f.options,
+    env: {
+      ...f.options.env,
+      PATH: `${bin}:${process.env.PATH}`,
+      PROOF_NODE: process.execPath,
+      PROOF_TOOL: tool,
+      PROOF_WRAPPER: wrapper,
+      OTEL_SDK_DISABLED: 'fixture-parent',
+      CREWAI_TELEMETRY_DISABLED: 'fixture-parent',
+      CREWAI_TRACING_ENABLED: 'fixture-parent',
+      PYTHONDONTWRITEBYTECODE: 'fixture-parent',
+      ...overrides,
+    },
+    spawnLane(...args) {
+      const child = spawn(...args);
+      groups.push(child.pid);
+      return child;
+    },
+  };
+  return {
+    ...f,
+    groups,
+    options,
+    calls: () =>
+      readFileSync(join(f.directory, 'calls.jsonl'), 'utf8')
+        .trim()
+        .split('\n')
+        .map((line) => JSON.parse(line)),
+    run: () =>
+      main(
+        [],
+        {
+          PUBLIC_CI_POSTBUILD_SCOPE: 'full',
+          GITHUB_OUTPUT: join(f.directory, 'github-output'),
+        },
+        (lanes) =>
+          superviseLanes(
+            [
+              {
+                name: 'web',
+                script: 'sleep 60 &\nprintf "%s" "$!" > "$PROOF_ROOT/web-descendant"',
+              },
+              lanes[1],
+            ],
+            options,
+          ),
+      ),
+  };
+}
+
+async function nativeStopped(f) {
+  for (const pid of f.groups) await stopped(pid);
+  for (const name of ['web', 'crewai', 'autogen']) {
+    const path = join(f.directory, `${name}-descendant`);
+    if (existsSync(path)) await stopped(Number(readFileSync(path, 'utf8')));
+  }
+  for (const name of ['crewai', 'autogen']) {
+    const path = join(f.directory, `${name}-start`);
+    if (existsSync(path)) await stopped(JSON.parse(readFileSync(path, 'utf8')).shell);
+  }
+  clean(f);
+}
+
+for (const failure of [undefined, 'crewai', 'autogen', 'both'])
+  test(
+    `actual native shell overlaps isolated frameworks and preserves ${failure ?? 'success'} status`,
+    linux,
+    async (t) => {
+      const f = nativeFixture(t, { PROOF_FAIL_FRAMEWORK: failure ?? '' });
+      if (failure)
+        await assert.rejects(
+          f.run(),
+          (error) => error.exitCode === (failure === 'autogen' ? 17 : 11),
+        );
+      else await f.run();
+      assert.equal(f.groups.length, 2);
+      assert.notEqual(f.groups[0], f.groups[1]);
+      const calls = f.calls();
+      for (const phase of ['wheel-build', 'curl', 'sha256sum', 'extract', 'uv-version'])
+        assert.equal(calls.filter((call) => call.phase === phase).length, 1, phase);
+      const starts = ['crewai', 'autogen'].map((name) =>
+        JSON.parse(readFileSync(join(f.directory, `${name}-start`), 'utf8')),
+      );
+      assert.notEqual(starts[0].shell, starts[1].shell);
+      assert.notEqual(starts[0].venv, starts[1].venv);
+      for (const start of starts) assert.equal(start.group, f.groups[1]);
+      for (const name of ['crewai', 'autogen']) {
+        const framework = calls.filter((call) => call.owner === name);
+        assert.ok(framework.length > 0);
+        for (const call of framework) {
+          assert.equal(call.group, f.groups[1]);
+          assert.equal(call.env.OTEL_SDK_DISABLED, 'true');
+          assert.equal(call.env.PYTHONDONTWRITEBYTECODE, '1');
+          assert.equal(call.env.CREWAI_TELEMETRY_DISABLED, name === 'crewai' ? 'true' : undefined);
+          assert.equal(call.env.CREWAI_TRACING_ENABLED, name === 'crewai' ? 'false' : undefined);
+        }
+        const failed = failure === name || failure === 'both';
+        assert.equal(framework.filter((call) => call.phase === 'complete').length, failed ? 0 : 1);
+        assert.equal(
+          framework.filter((call) => call.phase === 'installed-origin').length,
+          failed ? 0 : 1,
+        );
+      }
+      assert.equal(existsSync(join(f.directory, 'github-output')), !failure);
+      if (!failure)
+        assert.equal(readFileSync(join(f.directory, 'github-output'), 'utf8'), 'complete=true\n');
+      await nativeStopped(f);
+    },
+  );
+
+test(
+  'failed common checksum setup never launches either framework or emits completion',
+  linux,
+  async (t) => {
+    const f = nativeFixture(t, { PROOF_FAIL_SETUP: 'true' });
+    await assert.rejects(f.run(), (error) => error.exitCode === 19);
+    assert.equal(
+      f.calls().some((call) => ['crewai', 'autogen'].includes(call.owner)),
+      false,
+    );
+    assert.equal(existsSync(join(f.directory, 'github-output')), false);
+    await nativeStopped(f);
+  },
+);
+
+for (const signal of ['SIGTERM', 'SIGINT'])
+  test(
+    `${signal} cancellation kills both framework descendants in the original native group`,
+    linux,
+    async (t) => {
+      const f = nativeFixture(t, { PROOF_HOLD: 'true' });
+      const rejection = assert.rejects(
+        f.run(),
+        (error) => error.exitCode === (signal === 'SIGTERM' ? 143 : 130),
+      );
+      await until(() =>
+        ['crewai', 'autogen'].every((name) => existsSync(join(f.directory, `${name}-descendant`))),
+      );
+      f.signals.emit(signal);
+      await rejection;
+      assert.equal(f.groups.length, 2);
+      for (const name of ['crewai', 'autogen'])
+        assert.equal(
+          JSON.parse(readFileSync(join(f.directory, `${name}-start`), 'utf8')).group,
+          f.groups[1],
+        );
+      assert.equal(existsSync(join(f.directory, 'github-output')), false);
+      await nativeStopped(f);
+    },
+  );

@@ -68,6 +68,9 @@ chmod 0755 "$install_dir/uv"
 "$install_dir/uv" --version
 export PATH="$install_dir:$PATH"
 
+# Keep both framework subshells in this lane's owned process group.
+set +m
+(
 export OTEL_SDK_DISABLED=true CREWAI_TELEMETRY_DISABLED=true CREWAI_TRACING_ENABLED=false PYTHONDONTWRITEBYTECODE=1
 python -m venv "$RUNNER_TEMP/agentdomain-crewai"
 uv --no-config --no-cache --no-python-downloads pip install --python "$RUNNER_TEMP/agentdomain-crewai/bin/python" --require-hashes --no-build -r packages/mcp-server/examples/crewai/requirements.lock
@@ -76,8 +79,12 @@ uv --no-config --no-cache --no-python-downloads pip install --python "$RUNNER_TE
 "$RUNNER_TEMP/agentdomain-crewai/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-crewai") == "0.11.0"; assert Path(importlib.util.find_spec("agentdomain_crewai").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())'
 "$RUNNER_TEMP/agentdomain-crewai/bin/python" packages/mcp-server/test/crewai-package.py --dist "$RUNNER_TEMP/python-release/dist" -v
 AGENTDOMAIN_CREWAI_PYTHON="$RUNNER_TEMP/agentdomain-crewai/bin/python" node packages/mcp-server/test/crewai-integration.mjs
+) &
+crewai_pid=$!
 
+(
 unset CREWAI_TELEMETRY_DISABLED CREWAI_TRACING_ENABLED
+export OTEL_SDK_DISABLED=true PYTHONDONTWRITEBYTECODE=1
 python -m venv "$RUNNER_TEMP/agentdomain-autogen"
 "$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip install --disable-pip-version-check -r packages/mcp-server/examples/autogen/framework-requirements.txt -c packages/mcp-server/examples/autogen/constraints.txt
 "$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-0.11.0-py3-none-any.whl"
@@ -85,6 +92,23 @@ python -m venv "$RUNNER_TEMP/agentdomain-autogen"
 "$RUNNER_TEMP/agentdomain-autogen/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-autogen") == "0.11.0"; assert Path(importlib.util.find_spec("agentdomain_autogen").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())'
 "$RUNNER_TEMP/agentdomain-autogen/bin/python" packages/autogen-plugin/test/verify_artifacts.py "$RUNNER_TEMP/python-release/dist"
 AGENTDOMAIN_AUTOGEN_PYTHON="$RUNNER_TEMP/agentdomain-autogen/bin/python" node --test packages/mcp-server/test/autogen.integration.test.mjs
+) &
+autogen_pid=$!
+
+if wait "$crewai_pid"; then
+  crewai_status=0
+else
+  crewai_status=$?
+fi
+if wait "$autogen_pid"; then
+  autogen_status=0
+else
+  autogen_status=$?
+fi
+if [ "$crewai_status" -ne 0 ]; then
+  exit "$crewai_status"
+fi
+exit "$autogen_status"
 `;
 
 export function postbuildLanes(scope) {
