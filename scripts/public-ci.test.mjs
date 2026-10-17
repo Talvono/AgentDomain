@@ -55,7 +55,23 @@ const dryRuns = (workspace) =>
     ...environment,
   ]);
 const cloudflareSteps = (docsCommand) => [
-  ['--filter', '@agentdomain/frontend', 'build:cloudflare'],
+  ...(docsCommand === 'validate:output'
+    ? [
+        ['--filter', '@agentdomain/frontend', 'run', 'assets'],
+        ['--filter', '@agentdomain/frontend', 'run', 'test:isolation'],
+        ['--filter', '@agentdomain/frontend', 'exec', 'opennextjs-cloudflare', 'build'],
+        [
+          '--filter',
+          '@agentdomain/frontend',
+          'exec',
+          'opennextjs-cloudflare',
+          'populateCache',
+          'local',
+        ],
+        ['--filter', '@agentdomain/frontend', 'exec', 'node', 'scripts/check-build.mjs'],
+        ['--filter', '@agentdomain/frontend', 'exec', 'node', 'scripts/check-open-next.mjs'],
+      ]
+    : [['--filter', '@agentdomain/frontend', 'build:cloudflare']]),
   ...dryRuns('@agentdomain/frontend'),
   ['--filter', '@agentdomain/docs', docsCommand],
   ...dryRuns('@agentdomain/docs'),

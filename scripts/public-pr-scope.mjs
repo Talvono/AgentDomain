@@ -61,7 +61,9 @@ function gitRead(directory, args) {
 export function inspectPublicPrScope({ directory = root, env = process.env } = {}) {
   const full = { scope: 'full' };
   try {
-    if (env.GITHUB_EVENT_NAME !== 'pull_request') return full;
+    if (!['pull_request', 'push'].includes(env.GITHUB_EVENT_NAME)) return full;
+    if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_SERVER_URL !== 'https://github.com')
+      return full;
     const stat = lstatSync(env.GITHUB_EVENT_PATH);
     if (!stat.isFile() || stat.isSymbolicLink() || stat.size > PUBLIC_PR_SCOPE_LIMITS.eventBytes)
       return full;
@@ -72,27 +74,63 @@ export function inspectPublicPrScope({ directory = root, env = process.env } = {
     const policy = JSON.parse(
       readFileSync(resolve(directory, 'scripts/public-release-policy.json')),
     );
-    const repository = pr?.base?.repo;
+    const push = env.GITHUB_EVENT_NAME === 'push';
+    const repository = push ? event.repository : pr?.base?.repo;
     if (
-      !['opened', 'synchronize', 'reopened', 'ready_for_review'].includes(event.action) ||
-      !Number.isSafeInteger(event.number) ||
-      event.number < 1 ||
-      pr?.number !== event.number ||
-      env.GITHUB_REF !== `refs/pull/${event.number}/merge` ||
-      !sha(env.GITHUB_SHA) ||
-      !sha(pr?.base?.sha) ||
-      !sha(pr?.head?.sha) ||
-      pr.merge_commit_sha !== env.GITHUB_SHA ||
-      pr.base.ref !== 'main' ||
-      env.GITHUB_BASE_REF !== pr.base.ref ||
-      env.GITHUB_HEAD_REF !== pr.head.ref ||
       String(repository?.id) !== policy.repositoryId ||
       String(env.GITHUB_REPOSITORY_ID) !== policy.repositoryId ||
       repository?.full_name !== `${repository?.owner?.login}/${policy.repository}` ||
       env.GITHUB_REPOSITORY !== repository.full_name ||
       policy.owners[repository.owner.login] !== String(repository.owner.id) ||
-      event.repository?.id !== repository.id ||
-      event.repository?.full_name !== repository.full_name
+      env.GITHUB_ACTOR !== policy.operator.login ||
+      env.GITHUB_ACTOR_ID !== policy.operator.id ||
+      env.GITHUB_TRIGGERING_ACTOR !== policy.operator.login ||
+      env.GITHUB_RUN_ATTEMPT !== '1' ||
+      !sha(env.GITHUB_SHA)
+    )
+      return full;
+    if (
+      push &&
+      (env.GITHUB_REF !== 'refs/heads/main' ||
+        event.ref !== env.GITHUB_REF ||
+        !sha(event.before) ||
+        /^0{40}$/.test(event.before) ||
+        event.after !== env.GITHUB_SHA ||
+        event.before === event.after ||
+        event.created !== false ||
+        event.deleted !== false ||
+        event.forced !== false ||
+        event.sender?.login !== policy.operator.login ||
+        String(event.sender?.id) !== policy.operator.id ||
+        event.sender?.type !== 'User')
+    )
+      return full;
+    if (
+      !push &&
+      (!['opened', 'synchronize', 'reopened', 'ready_for_review'].includes(event.action) ||
+        !Number.isSafeInteger(event.number) ||
+        event.number < 1 ||
+        pr?.number !== event.number ||
+        env.GITHUB_REF !== `refs/pull/${event.number}/merge` ||
+        !sha(env.GITHUB_SHA) ||
+        !sha(pr?.base?.sha) ||
+        !sha(pr?.head?.sha) ||
+        pr.merge_commit_sha !== env.GITHUB_SHA ||
+        pr.base.ref !== 'main' ||
+        env.GITHUB_BASE_REF !== pr.base.ref ||
+        env.GITHUB_HEAD_REF !== pr.head.ref ||
+        String(repository?.id) !== policy.repositoryId ||
+        String(env.GITHUB_REPOSITORY_ID) !== policy.repositoryId ||
+        repository?.full_name !== `${repository?.owner?.login}/${policy.repository}` ||
+        env.GITHUB_REPOSITORY !== repository.full_name ||
+        policy.owners[repository.owner.login] !== String(repository.owner.id) ||
+        event.repository?.id !== repository.id ||
+        event.repository?.full_name !== repository.full_name ||
+        pr.draft !== false ||
+        pr.head.repo?.id !== repository.id ||
+        pr.head.repo?.full_name !== repository.full_name ||
+        pr.head.repo?.owner?.login !== repository.owner.login ||
+        pr.head.repo?.owner?.id !== repository.owner.id)
     )
       return full;
     const git = (args) => gitRead(directory, args);
@@ -118,12 +156,14 @@ export function inspectPublicPrScope({ directory = root, env = process.env } = {
       return full;
     const merge = git(['rev-parse', '--verify', 'HEAD']).trim();
     const parents = git(['rev-list', '--parents', '-n', '1', 'HEAD']).trim().split(' ');
+    if (push) git(['merge-base', '--is-ancestor', event.before, merge]);
     if (
       merge !== env.GITHUB_SHA ||
-      parents.length !== 3 ||
-      parents[0] !== merge ||
-      parents[1] !== pr.base.sha ||
-      parents[2] !== pr.head.sha
+      (!push &&
+        (parents.length !== 3 ||
+          parents[0] !== merge ||
+          parents[1] !== pr.base.sha ||
+          parents[2] !== pr.head.sha))
     )
       return full;
     // Disabling rename detection exposes both old and new paths, including deletions.
@@ -134,7 +174,7 @@ export function inspectPublicPrScope({ directory = root, env = process.env } = {
       '--no-renames',
       '--name-only',
       '-z',
-      pr.base.sha,
+      push ? event.before : pr.base.sha,
       merge,
       '--',
     ]);

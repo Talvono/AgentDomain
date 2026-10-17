@@ -152,6 +152,24 @@ function assertNextBuildEnabled() {
     throw new Error('SKIP_NEXT_APP_BUILD must be unset or empty for Cloudflare CI.');
 }
 
+function runFrontendAfterDependencies(run) {
+  if (!currentPublicBuildArgs().includes('--filter=!@agentdomain/frontend')) {
+    run(['--filter', '@agentdomain/frontend', 'build:cloudflare']);
+    return;
+  }
+  // Only reached after this invocation's dependency builds succeeded. The same
+  // exact script/config guard used for Next deferral protects the unchanged tail.
+  for (const args of [
+    ['run', 'assets'],
+    ['run', 'test:isolation'],
+    ['exec', 'opennextjs-cloudflare', 'build'],
+    ['exec', 'opennextjs-cloudflare', 'populateCache', 'local'],
+    ['exec', 'node', 'scripts/check-build.mjs'],
+    ['exec', 'node', 'scripts/check-open-next.mjs'],
+  ])
+    run(['--filter', '@agentdomain/frontend', ...args]);
+}
+
 export function runPublicCi(run = runPnpm, { cloudflare = false } = {}) {
   if (cloudflare) assertNextBuildEnabled();
   for (const args of [
@@ -180,7 +198,14 @@ export function runPublicCi(run = runPnpm, { cloudflare = false } = {}) {
   }
   if (cloudflare) {
     // Reuse only the docs lint, typecheck, tests and build completed in this invocation.
-    runCloudflareChecks(run, () => run(['--filter', '@agentdomain/docs', 'validate:output']));
+    runCloudflareChecks(
+      (args) => {
+        if (args.join(' ') === '--filter @agentdomain/frontend build:cloudflare')
+          runFrontendAfterDependencies(run);
+        else run(args);
+      },
+      () => run(['--filter', '@agentdomain/docs', 'validate:output']),
+    );
   }
 }
 
@@ -227,7 +252,7 @@ export function runPublicPrCi(run = runPnpm, inspect = inspectPublicPrScope) {
       '--filter=@agentdomain/frontend...',
       '--force',
     ]);
-    run(['--filter', '@agentdomain/frontend', 'build:cloudflare']);
+    runFrontendAfterDependencies(run);
     // Docs source-contract tests include consumers not represented by workspace edges.
     run(['--filter', '@agentdomain/docs', 'test']);
   }
@@ -248,6 +273,8 @@ export function runCi(args, run = runPnpm) {
     return runCloudflareChecks(run);
   }
   if (args.length === 2 && args[0] === '--pull-request' && args[1] === '--cloudflare')
+    return runPublicPrCi(run);
+  if (args.length === 2 && args[0] === '--affected' && args[1] === '--cloudflare')
     return runPublicPrCi(run);
   throw new Error('Usage: pnpm ci:public [--cloudflare] or pnpm ci:cloudflare');
 }

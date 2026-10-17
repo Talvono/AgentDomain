@@ -1,6 +1,7 @@
 name: Public CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
@@ -97,17 +98,12 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Verify public source, production dependencies, and Cloudflare artifacts
-        if: github.event_name != 'pull_request'
-        run: pnpm ci:public --cloudflare
-
-      - name: Verify public pull request with current-source routing
-        if: github.event_name == 'pull_request'
-        id: public-pr
-        run: pnpm ci:public --pull-request --cloudflare
+      - name: Verify affected public source with mandatory full fallback
+        id: public-scope
+        run: pnpm ci:public --affected --cloudflare
 
       - name: Exercise isolated SIWE hook browser regressions
-        if: github.event_name != 'pull_request' || steps.public-pr.outputs.scope != 'docs'
+        if: steps.public-scope.outputs.scope != 'docs'
         shell: bash
         run: |
           set -euo pipefail
@@ -132,7 +128,7 @@ jobs:
           python -B -m unittest discover -s scripts -p test_python_boundary.py
 
       - name: Build the exact Python distributions
-        if: github.event_name != 'pull_request' || (steps.public-pr.outputs.scope != 'docs' && steps.public-pr.outputs.scope != 'frontend')
+        if: steps.public-scope.outputs.scope != 'docs' && steps.public-scope.outputs.scope != 'frontend'
         shell: bash
         run: |
           set -euo pipefail
@@ -141,7 +137,7 @@ jobs:
           "$RUNNER_TEMP/python-build/bin/python" scripts/release-artifacts.py build-python --output "$RUNNER_TEMP/python-release"
 
       - name: Set up checksum-pinned uv for locked CrewAI dependencies
-        if: github.event_name != 'pull_request' || (steps.public-pr.outputs.scope != 'docs' && steps.public-pr.outputs.scope != 'frontend')
+        if: steps.public-scope.outputs.scope != 'docs' && steps.public-scope.outputs.scope != 'frontend'
         shell: bash
         env:
           UV_VERSION: 0.11.33
@@ -161,7 +157,7 @@ jobs:
           printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
 
       - name: Qualify the official CrewAI connector without model or wallet access
-        if: github.event_name != 'pull_request' || (steps.public-pr.outputs.scope != 'docs' && steps.public-pr.outputs.scope != 'frontend')
+        if: steps.public-scope.outputs.scope != 'docs' && steps.public-scope.outputs.scope != 'frontend'
         shell: bash
         env:
           OTEL_SDK_DISABLED: 'true'
@@ -179,7 +175,7 @@ jobs:
           AGENTDOMAIN_CREWAI_PYTHON="$RUNNER_TEMP/agentdomain-crewai/bin/python" node packages/mcp-server/test/crewai-integration.mjs
 
       - name: Qualify the official AutoGen connector without model or wallet access
-        if: github.event_name != 'pull_request' || (steps.public-pr.outputs.scope != 'docs' && steps.public-pr.outputs.scope != 'frontend')
+        if: steps.public-scope.outputs.scope != 'docs' && steps.public-scope.outputs.scope != 'frontend'
         shell: bash
         env:
           OTEL_SDK_DISABLED: 'true'
@@ -195,7 +191,7 @@ jobs:
           AGENTDOMAIN_AUTOGEN_PYTHON="$RUNNER_TEMP/agentdomain-autogen/bin/python" node --test packages/mcp-server/test/autogen.integration.test.mjs
 
       - name: Exercise generated footer routes in the Cloudflare runtime
-        if: github.event_name != 'pull_request' || steps.public-pr.outputs.scope != 'docs'
+        if: steps.public-scope.outputs.scope != 'docs'
         shell: bash
         run: |
           set -euo pipefail
@@ -215,3 +211,7 @@ jobs:
             exit 1
           fi
           node apps/frontend/test/footer-routes.smoke.mjs http://127.0.0.1:8790
+
+      - name: Full Public Qualification (agentdomain.public-ci.full.v1)
+        if: steps.public-scope.outputs.scope == 'full'
+        run: echo "Full public qualification passed for $GITHUB_SHA."
