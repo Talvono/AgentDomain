@@ -105,7 +105,7 @@ jobs:
           "$RUNNER_TEMP/autogen/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-autogen") == "0.11.0"; assert Path(importlib.util.find_spec("agentdomain_autogen").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())'
           "$RUNNER_TEMP/autogen/bin/python" packages/autogen-plugin/test/verify_artifacts.py "$RUNNER_TEMP/python-release/dist"
           AGENTDOMAIN_AUTOGEN_PYTHON="$RUNNER_TEMP/autogen/bin/python" node --test packages/mcp-server/test/autogen.integration.test.mjs
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: python-packages-${{ github.sha }}
           path: ${{ runner.temp }}/python-release
