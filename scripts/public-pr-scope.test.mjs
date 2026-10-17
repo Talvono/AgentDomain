@@ -12,6 +12,7 @@ import {
   resolvePublicPrScope,
 } from './public-pr-scope.mjs';
 import { runCi, runPublicCi, runPublicPrCi } from './public-ci.mjs';
+import { postbuildLanes } from './public-ci-postbuild.mjs';
 
 const docs = 'apps/docs/src/content/docs/quickstart.mdx';
 const frontend = 'apps/frontend/src/app/page.tsx';
@@ -83,16 +84,19 @@ function fixture(t, changes = [[docs, 'changed\n']], initial = {}) {
     number: 7,
     repository,
     pull_request: {
+      draft: false,
       number: 7,
       merge_commit_sha: merge,
       base: { sha: base, ref: 'main', repo: repository },
-      head: { sha: head, ref: 'feature' },
+      head: { sha: head, ref: 'feature', repo: repository },
     },
   };
   const eventPath = join(temporary, 'event.json');
   const saveEvent = () => writeFileSync(eventPath, JSON.stringify(event));
   saveEvent();
   const env = {
+    GITHUB_ACTIONS: 'true',
+    GITHUB_SERVER_URL: 'https://github.com',
     GITHUB_EVENT_NAME: 'pull_request',
     GITHUB_EVENT_PATH: eventPath,
     GITHUB_SHA: merge,
@@ -101,6 +105,10 @@ function fixture(t, changes = [[docs, 'changed\n']], initial = {}) {
     GITHUB_HEAD_REF: 'feature',
     GITHUB_REPOSITORY_ID: policy.repositoryId,
     GITHUB_REPOSITORY: repository.full_name,
+    GITHUB_ACTOR: policy.operator.login,
+    GITHUB_ACTOR_ID: policy.operator.id,
+    GITHUB_TRIGGERING_ACTOR: policy.operator.login,
+    GITHUB_RUN_ATTEMPT: '1',
   };
   return {
     directory,
@@ -180,6 +188,95 @@ test('frontend route is independently proven from actual Git', (t) => {
   assert.equal(f.inspect(), 'frontend');
 });
 
+function pushContext(f) {
+  const event = {
+    repository: f.event.repository,
+    before: f.base,
+    after: f.merge,
+    ref: 'refs/heads/main',
+    created: false,
+    deleted: false,
+    forced: false,
+    sender: { login: policy.operator.login, id: Number(policy.operator.id), type: 'User' },
+  };
+  writeFileSync(f.env.GITHUB_EVENT_PATH, JSON.stringify(event));
+  return { event, env: { ...f.env, GITHUB_EVENT_NAME: 'push', GITHUB_REF: event.ref } };
+}
+
+for (const [path, scope] of [
+  [docs, 'docs'],
+  [frontend, 'frontend'],
+])
+  test(`trusted main push qualifies exact ${scope} range and retains source guards`, (t) => {
+    const f = fixture(t, [[path, 'changed\n']]);
+    const { env } = pushContext(f);
+    const proof = inspectPublicPrScope({ directory: f.directory, env });
+    assert.equal(proof.scope, scope);
+    proof.assertSource();
+    f.write(path, 'mutated after routing\n');
+    assert.throws(proof.assertSource, /PUBLIC_PR_SOURCE_CHANGED/);
+  });
+
+test('main pushes require exact operator, real ancestor, complete nonforced event and first attempt', (t) => {
+  const f = fixture(t);
+  const { env, event } = pushContext(f);
+  for (const patch of [
+    { GITHUB_ACTIONS: 'false' },
+    { GITHUB_SERVER_URL: 'https://github.example.invalid' },
+    { GITHUB_ACTOR_ID: '42' },
+    { GITHUB_ACTOR: 'foreign' },
+    { GITHUB_TRIGGERING_ACTOR: 'foreign' },
+    { GITHUB_RUN_ATTEMPT: '2' },
+    { GITHUB_REF: 'refs/heads/release' },
+    { GITHUB_SHA: f.base },
+    { GITHUB_EVENT_NAME: 'workflow_dispatch' },
+    { GITHUB_EVENT_NAME: 'release' },
+  ])
+    assert.equal(
+      inspectPublicPrScope({ directory: f.directory, env: { ...env, ...patch } }).scope,
+      'full',
+    );
+  for (const patch of [
+    { before: '0'.repeat(40) },
+    { before: 'f'.repeat(40) },
+    { after: f.base },
+    { ref: 'refs/heads/release' },
+    { created: true },
+    { deleted: true },
+    { forced: true },
+    { forced: undefined },
+    { sender: { login: 'foreign', id: 42, type: 'User' } },
+    { repository: { ...event.repository, id: 42 } },
+  ]) {
+    writeFileSync(env.GITHUB_EVENT_PATH, JSON.stringify({ ...event, ...patch }));
+    assert.equal(inspectPublicPrScope({ directory: f.directory, env }).scope, 'full');
+  }
+});
+
+test('main range includes every pushed commit rather than only the last commit', (t) => {
+  const f = fixture(t, [['packages/sdk/src/index.ts', 'shared change\n']]);
+  f.write(docs, 'last docs change\n');
+  f.git('add', '.');
+  f.git('commit', '-m', 'last docs-only commit');
+  f.merge = f.git('rev-parse', 'HEAD');
+  f.env.GITHUB_SHA = f.merge;
+  const { env } = pushContext(f);
+  assert.equal(inspectPublicPrScope({ directory: f.directory, env }).scope, 'full');
+});
+
+test('an existing but unrelated before commit cannot reduce main qualification', (t) => {
+  const f = fixture(t);
+  f.git('checkout', '-b', 'unrelated', f.base);
+  f.write(docs, 'unrelated branch\n');
+  f.git('add', '.');
+  f.git('commit', '-m', 'unrelated commit');
+  const unrelated = f.git('rev-parse', 'HEAD');
+  f.git('checkout', 'main');
+  const { event, env } = pushContext(f);
+  writeFileSync(env.GITHUB_EVENT_PATH, JSON.stringify({ ...event, before: unrelated }));
+  assert.equal(inspectPublicPrScope({ directory: f.directory, env }).scope, 'full');
+});
+
 test('Talvono transfer preserves the same repository and merge checkout qualification', (t) => {
   const f = fixture(t);
   f.event.repository.full_name = 'Talvono/AgentDomain';
@@ -187,6 +284,8 @@ test('Talvono transfer preserves the same repository and merge checkout qualific
   f.env.GITHUB_REPOSITORY = 'Talvono/AgentDomain';
   f.saveEvent();
   assert.equal(f.inspect(), 'docs');
+  const { env } = pushContext(f);
+  assert.equal(inspectPublicPrScope({ directory: f.directory, env }).scope, 'docs');
 });
 
 test('renames include the original path and cannot hide mixed-scope changes', (t) => {
@@ -211,6 +310,12 @@ test('all context mismatches select full, including forged base/head and owner i
   for (const [key, value] of [
     ['GITHUB_EVENT_NAME', 'push'],
     ['GITHUB_EVENT_NAME', 'workflow_dispatch'],
+    ['GITHUB_ACTIONS', 'false'],
+    ['GITHUB_SERVER_URL', 'https://github.example.invalid'],
+    ['GITHUB_ACTOR', 'foreign'],
+    ['GITHUB_ACTOR_ID', '42'],
+    ['GITHUB_TRIGGERING_ACTOR', 'foreign'],
+    ['GITHUB_RUN_ATTEMPT', '2'],
     ['GITHUB_SHA', f.head],
     ['GITHUB_REF', 'refs/heads/main'],
     ['GITHUB_BASE_REF', 'release'],
@@ -245,6 +350,15 @@ test('all context mismatches select full, including forged base/head and owner i
     },
     (e) => {
       e.action = 'closed';
+    },
+    (e) => {
+      e.pull_request.draft = true;
+    },
+    (e) => {
+      e.pull_request.head.repo = { ...e.repository, id: 42 };
+    },
+    (e) => {
+      e.pull_request.head.repo = { ...e.repository, full_name: 'foreign/AgentDomain' };
     },
   ]) {
     const event = JSON.parse(original);
@@ -353,7 +467,8 @@ test('every reduced route retains every mandatory guard and both exact Worker dr
   );
   assert(
     frontendCommands.some(
-      (args) => args.join(' ') === '--filter @agentdomain/frontend build:cloudflare',
+      (args) =>
+        args.join(' ') === '--filter @agentdomain/frontend exec opennextjs-cloudflare build',
     ),
   );
   assert(frontendCommands.some((args) => args.join(' ') === '--filter @agentdomain/docs test'));
@@ -367,7 +482,21 @@ test('routing regressions are mandatory once in full and scoped guard commands',
     .filter((command) => command.startsWith('node --test '));
   assert.equal(fullGuards.length, 1);
   assert.equal(fullGuards[0].split(' ').filter((argument) => argument === suite).length, 1);
-  assert.equal(capture('full').filter((command) => command[0] === 'test:public').length, 1);
+  const fullCommands = capture('full');
+  const umbrella = fullCommands.filter((command) => command[0] === 'test:public');
+  const combinedGuards = fullCommands.filter(
+    (command) => command.slice(0, 3).join(' ') === 'exec node --test',
+  );
+  assert.equal(umbrella.length + combinedGuards.length, 1);
+  if (combinedGuards.length === 1)
+    assert.deepEqual(combinedGuards[0], ['exec', ...fullGuards[0].split(' ')]);
+  const fallback = [];
+  runPublicCi((command) => fallback.push(command), {
+    cloudflare: true,
+    inspectGraph: () => null,
+  });
+  assert.equal(fallback.filter((command) => command[0] === 'test:public').length, 1);
+  assert.equal(fallback.filter((command) => command.includes(suite)).length, 0);
   for (const scope of ['docs', 'frontend']) {
     const guards = capture(scope).filter(
       (command) => command.slice(0, 3).join(' ') === 'exec node --test',
@@ -551,7 +680,7 @@ for (const [name, route, mutate] of [
             args.join(' ') ===
             (route === 'docs'
               ? '--filter @agentdomain/docs check'
-              : '--filter @agentdomain/frontend build:cloudflare')
+              : '--filter @agentdomain/frontend exec opennextjs-cloudflare build')
           ) {
             mutate(f, sdk, original);
             mutated = true;
@@ -611,7 +740,7 @@ function yamlValue(node) {
   return yamlValue(node.children[0]);
 }
 
-test('workflow retains history scan, boundary and release guards, and fails open to full workloads', () => {
+test('workflow retains source guards, exact post-build lanes and fail-closed full completion', () => {
   const source = readFileSync(
     new URL('../.github/workflows/public-ci.yml', import.meta.url),
     'utf8',
@@ -643,44 +772,67 @@ test('workflow retains history scan, boundary and release guards, and fails open
   const guards = step('Test release and routing guards').run;
   for (const name of [
     'npm-release.test.mjs',
+    'public-ci-postbuild.test.mjs',
     'test_release_artifacts.py',
     'test_python_boundary.py',
   ])
     assert(guards.includes(name));
   assert.equal(
-    step('Verify public source, production dependencies, and Cloudflare artifacts').run,
-    'pnpm ci:public --cloudflare',
+    step('Verify affected public source with mandatory full fallback').run,
+    'pnpm ci:public --affected --cloudflare',
   );
-  assert.equal(
-    step('Verify public pull request with current-source routing').run,
-    'pnpm ci:public --pull-request --cloudflare',
+  const postbuild = step('Qualify isolated web and native Python post-build lanes');
+  assert.equal(postbuild.id, 'public-postbuild');
+  assert.equal(postbuild.run, 'node scripts/public-ci-postbuild.mjs');
+  assert.equal(postbuild.if, undefined);
+  assert.deepEqual(postbuild.env, {
+    PUBLIC_CI_POSTBUILD_SCOPE: '${{ steps.public-scope.outputs.scope }}',
+  });
+  assert.equal(job.steps.filter((item) => item.id === 'public-postbuild').length, 1);
+  assert.ok(
+    job.steps.indexOf(postbuild) >
+      job.steps.indexOf(step('Verify affected public source with mandatory full fallback')),
   );
-  const evaluate = (item, event, scope) =>
+  assert.ok(
+    job.steps.indexOf(postbuild) > job.steps.indexOf(step('Test release and routing guards')),
+  );
+  for (const [scope, expected] of [
+    ['full', ['web', 'native-python']],
+    ['frontend', ['web']],
+    ['docs', []],
+  ])
+    assert.deepEqual(
+      postbuildLanes(scope).map(({ name }) => name),
+      expected,
+    );
+  for (const scope of [undefined, '', 'unknown']) assert.throws(() => postbuildLanes(scope));
+
+  const evaluate = (item, event, scope, complete) =>
     Function(
       'github',
       'steps',
-      `return (${item.if.replaceAll('steps.public-pr', "steps['public-pr']")})`,
-    )({ event_name: event }, { 'public-pr': { outputs: { scope } } });
-  for (const name of [
-    'Build the exact Python distributions',
-    'Set up checksum-pinned uv for locked CrewAI dependencies',
-    'Qualify the official CrewAI connector without model or wallet access',
-    'Qualify the official AutoGen connector without model or wallet access',
-  ]) {
-    for (const scope of ['full', undefined, 'unknown', 'docs', 'frontend']) {
-      assert.equal(evaluate(step(name), 'push', scope), true);
-      assert.equal(
-        evaluate(step(name), 'pull_request', scope),
-        !['docs', 'frontend'].includes(scope),
-      );
-    }
-  }
-  for (const name of [
-    'Exercise isolated SIWE hook browser regressions',
-    'Exercise generated footer routes in the Cloudflare runtime',
-  ]) {
-    assert.equal(evaluate(step(name), 'push', 'docs'), true);
-    for (const scope of ['full', undefined, 'unknown', 'docs', 'frontend'])
-      assert.equal(evaluate(step(name), 'pull_request', scope), scope !== 'docs');
-  }
+      `return (${item.if
+        .replaceAll('steps.public-scope', "steps['public-scope']")
+        .replaceAll('steps.public-postbuild', "steps['public-postbuild']")})`,
+    )(
+      { event_name: event },
+      {
+        'public-scope': { outputs: { scope } },
+        'public-postbuild': { outputs: { complete } },
+      },
+    );
+  assert.equal(workflow.on.workflow_dispatch, null);
+  const marker = step('Full Public Qualification (agentdomain.public-ci.full.v1)');
+  assert.equal(job.steps.at(-1), marker);
+  assert.equal(
+    marker.if,
+    "steps.public-scope.outputs.scope == 'full' && steps.public-postbuild.outputs.complete == 'true'",
+  );
+  for (const event of ['push', 'pull_request', 'workflow_dispatch'])
+    for (const scope of ['full', 'docs', 'frontend', undefined, 'unknown'])
+      for (const complete of ['true', 'false', '', undefined])
+        assert.equal(
+          evaluate(marker, event, scope, complete),
+          scope === 'full' && complete === 'true',
+        );
 });

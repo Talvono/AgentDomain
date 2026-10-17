@@ -41,6 +41,10 @@
     "access": "public"
   },
   "scripts": {
+    "build:ci": "tsc",
+    "lint:ci": "echo \"no lint\"",
+    "typecheck:ci": "tsc --noEmit",
+    "test:ci": "node --test test/*.test.mjs",
     "build": "tsc",
     "prepublishOnly": "pnpm run build",
     "test": "pnpm --filter @agentdomain/sdk build && pnpm run build && node --test test/*.test.mjs",

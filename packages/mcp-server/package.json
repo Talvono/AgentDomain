@@ -51,6 +51,10 @@
     "access": "public"
   },
   "scripts": {
+    "build:ci": "tsc",
+    "lint:ci": "echo \"no lint\"",
+    "typecheck:ci": "tsc --noEmit",
+    "test:ci": "node --test test/*.test.mjs",
     "build": "tsc",
     "prepublishOnly": "pnpm run build",
     "dev": "tsx watch src/index.ts",

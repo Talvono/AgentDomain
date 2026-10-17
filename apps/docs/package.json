@@ -17,6 +17,11 @@
   },
   "packageManager": "pnpm@10.33.2",
   "scripts": {
+    "build:ci": "astro build && node ../../scripts/seo/indexnow.mjs prepare-key --site=docs",
+    "lint:ci": "node scripts/validate-content.mjs",
+    "typecheck:ci": "astro check",
+    "test:ci": "node --test test/*.test.mjs",
+    "validate:output:ci": "node scripts/validate-output.mjs",
     "build:dependencies": "pnpm --filter @agentdomain/shared build",
     "dev": "pnpm run build:dependencies && astro dev",
     "build": "pnpm run build:dependencies && astro build && node ../../scripts/seo/indexnow.mjs prepare-key --site=docs",

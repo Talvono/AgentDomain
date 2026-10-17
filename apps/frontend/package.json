@@ -4,6 +4,9 @@
   "private": true,
   "license": "Apache-2.0",
   "scripts": {
+    "lint:ci": "eslint .",
+    "typecheck:ci": "pnpm run assets && tsc --noEmit",
+    "test:ci": "pnpm run assets && node --test test/*.test.mjs && tsx --test test/*.test.ts && pnpm run test:seo",
     "assets": "node scripts/verify-assets.mjs",
     "assets:generate": "node scripts/generate-web-assets.mjs",
     "dev": "pnpm run assets && next dev",

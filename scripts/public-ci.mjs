@@ -6,6 +6,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { runCloudflareChecks } from './cloudflare-checks.mjs';
 import { inspectPublicPrScope } from './public-pr-scope.mjs';
+import { inspectPublicCiGraph, reviewedCiTurboSource } from './public-ci-graph.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 
@@ -80,8 +81,10 @@ export function publicBuildArgs(manifest, frontend, config) {
     Object.entries(buildConfigHashes).every(
       ([path, hash]) =>
         typeof config.sources?.[path] === 'string' &&
-        createHash('sha256').update(config.sources[path].replaceAll('\r\n', '\n')).digest('hex') ===
-          hash,
+        (createHash('sha256')
+          .update(config.sources[path].replaceAll('\r\n', '\n'))
+          .digest('hex') === hash ||
+          (path === 'turbo.json' && reviewedCiTurboSource(config.sources[path]))),
     );
   // The unchanged OpenNext adapter runs the complete frontend build later in this invocation.
   return duplicatesCloudflareBuild
@@ -152,35 +155,80 @@ function assertNextBuildEnabled() {
     throw new Error('SKIP_NEXT_APP_BUILD must be unset or empty for Cloudflare CI.');
 }
 
-export function runPublicCi(run = runPnpm, { cloudflare = false } = {}) {
+function runFrontendAfterDependencies(run, { graph = false } = {}) {
+  if (!currentPublicBuildArgs().includes('--filter=!@agentdomain/frontend')) {
+    run(['--filter', '@agentdomain/frontend', 'build:cloudflare']);
+    return;
+  }
+  // Only reached after this invocation's dependency builds succeeded. The same
+  // exact script/config guard used for Next deferral protects the unchanged tail.
+  for (const args of [
+    ...(!graph
+      ? [
+          ['run', 'assets'],
+          ['run', 'test:isolation'],
+        ]
+      : []),
+    ['exec', 'opennextjs-cloudflare', 'build'],
+    ['exec', 'opennextjs-cloudflare', 'populateCache', 'local'],
+    ['exec', 'node', 'scripts/check-build.mjs'],
+    ['exec', 'node', 'scripts/check-open-next.mjs'],
+  ])
+    run(['--filter', '@agentdomain/frontend', ...args]);
+}
+
+export function runPublicCi(
+  run = runPnpm,
+  { cloudflare = false, inspectGraph = inspectPublicCiGraph } = {},
+) {
   if (cloudflare) assertNextBuildEnabled();
   for (const args of [
     ['check:public-boundary'],
     ['check:production-licenses'],
     ['audit', '--prod', '--audit-level', 'high'],
     ['format:check'],
-    ['lint:public'],
-    ['typecheck:public'],
-    ['test:public'],
-    ['build:public'],
-  ]) {
-    if (args[0] === 'lint:public') {
-      const manifest = JSON.parse(
-        readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
-      );
-      const langchain = JSON.parse(
-        readFileSync(new URL('../packages/langchain-plugin/package.json', import.meta.url), 'utf8'),
-      );
-      run(publicLintArgs(manifest, langchain));
-    } else if (cloudflare && args[0] === 'build:public') {
-      run(currentPublicBuildArgs());
-    } else {
-      run(args);
+  ])
+    run(args);
+  const proof =
+    cloudflare && currentPublicBuildArgs().includes('--filter=!@agentdomain/frontend')
+      ? inspectGraph()
+      : null;
+  if (proof) {
+    for (const args of proof.rootTests) run(args);
+    proof.assertUnchanged();
+    run(proof.args);
+    proof.assertUnchanged();
+  } else
+    for (const args of [['lint:public'], ['typecheck:public'], ['test:public'], ['build:public']]) {
+      if (args[0] === 'lint:public') {
+        const manifest = JSON.parse(
+          readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+        );
+        const langchain = JSON.parse(
+          readFileSync(
+            new URL('../packages/langchain-plugin/package.json', import.meta.url),
+            'utf8',
+          ),
+        );
+        run(publicLintArgs(manifest, langchain));
+      } else if (cloudflare && args[0] === 'build:public') {
+        run(currentPublicBuildArgs());
+      } else {
+        run(args);
+      }
     }
-  }
   if (cloudflare) {
     // Reuse only the docs lint, typecheck, tests and build completed in this invocation.
-    runCloudflareChecks(run, () => run(['--filter', '@agentdomain/docs', 'validate:output']));
+    runCloudflareChecks(
+      (args) => {
+        if (args.join(' ') === '--filter @agentdomain/frontend build:cloudflare')
+          runFrontendAfterDependencies(run, { graph: !!proof });
+        else run(args);
+      },
+      () =>
+        run(proof ? proof.docsValidation : ['--filter', '@agentdomain/docs', 'validate:output']),
+    );
+    proof?.assertUnchanged();
   }
 }
 
@@ -190,6 +238,7 @@ export function runPublicPrCi(run = runPnpm, inspect = inspectPublicPrScope) {
   const scope = proof.scope;
   if (!['docs', 'frontend'].includes(scope)) {
     runPublicCi(run, { cloudflare: true });
+    proof.assertSource?.();
     return 'full';
   }
   for (const args of [
@@ -227,7 +276,7 @@ export function runPublicPrCi(run = runPnpm, inspect = inspectPublicPrScope) {
       '--filter=@agentdomain/frontend...',
       '--force',
     ]);
-    run(['--filter', '@agentdomain/frontend', 'build:cloudflare']);
+    runFrontendAfterDependencies(run);
     // Docs source-contract tests include consumers not represented by workspace edges.
     run(['--filter', '@agentdomain/docs', 'test']);
   }
@@ -248,6 +297,8 @@ export function runCi(args, run = runPnpm) {
     return runCloudflareChecks(run);
   }
   if (args.length === 2 && args[0] === '--pull-request' && args[1] === '--cloudflare')
+    return runPublicPrCi(run);
+  if (args.length === 2 && args[0] === '--affected' && args[1] === '--cloudflare')
     return runPublicPrCi(run);
   throw new Error('Usage: pnpm ci:public [--cloudflare] or pnpm ci:cloudflare');
 }
