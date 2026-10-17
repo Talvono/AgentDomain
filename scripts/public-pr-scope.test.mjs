@@ -12,6 +12,7 @@ import {
   resolvePublicPrScope,
 } from './public-pr-scope.mjs';
 import { runCi, runPublicCi, runPublicPrCi } from './public-ci.mjs';
+import { postbuildLanes } from './public-ci-postbuild.mjs';
 
 const docs = 'apps/docs/src/content/docs/quickstart.mdx';
 const frontend = 'apps/frontend/src/app/page.tsx';
@@ -481,7 +482,21 @@ test('routing regressions are mandatory once in full and scoped guard commands',
     .filter((command) => command.startsWith('node --test '));
   assert.equal(fullGuards.length, 1);
   assert.equal(fullGuards[0].split(' ').filter((argument) => argument === suite).length, 1);
-  assert.equal(capture('full').filter((command) => command[0] === 'test:public').length, 1);
+  const fullCommands = capture('full');
+  const umbrella = fullCommands.filter((command) => command[0] === 'test:public');
+  const combinedGuards = fullCommands.filter(
+    (command) => command.slice(0, 3).join(' ') === 'exec node --test',
+  );
+  assert.equal(umbrella.length + combinedGuards.length, 1);
+  if (combinedGuards.length === 1)
+    assert.deepEqual(combinedGuards[0], ['exec', ...fullGuards[0].split(' ')]);
+  const fallback = [];
+  runPublicCi((command) => fallback.push(command), {
+    cloudflare: true,
+    inspectGraph: () => null,
+  });
+  assert.equal(fallback.filter((command) => command[0] === 'test:public').length, 1);
+  assert.equal(fallback.filter((command) => command.includes(suite)).length, 0);
   for (const scope of ['docs', 'frontend']) {
     const guards = capture(scope).filter(
       (command) => command.slice(0, 3).join(' ') === 'exec node --test',
@@ -725,7 +740,7 @@ function yamlValue(node) {
   return yamlValue(node.children[0]);
 }
 
-test('workflow retains history scan, boundary and release guards, and fails open to full workloads', () => {
+test('workflow retains source guards, exact post-build lanes and fail-closed full completion', () => {
   const source = readFileSync(
     new URL('../.github/workflows/public-ci.yml', import.meta.url),
     'utf8',
@@ -757,6 +772,7 @@ test('workflow retains history scan, boundary and release guards, and fails open
   const guards = step('Test release and routing guards').run;
   for (const name of [
     'npm-release.test.mjs',
+    'public-ci-postbuild.test.mjs',
     'test_release_artifacts.py',
     'test_python_boundary.py',
   ])
@@ -765,37 +781,58 @@ test('workflow retains history scan, boundary and release guards, and fails open
     step('Verify affected public source with mandatory full fallback').run,
     'pnpm ci:public --affected --cloudflare',
   );
-  const evaluate = (item, event, scope) =>
+  const postbuild = step('Qualify isolated web and native Python post-build lanes');
+  assert.equal(postbuild.id, 'public-postbuild');
+  assert.equal(postbuild.run, 'node scripts/public-ci-postbuild.mjs');
+  assert.equal(postbuild.if, undefined);
+  assert.deepEqual(postbuild.env, {
+    PUBLIC_CI_POSTBUILD_SCOPE: '${{ steps.public-scope.outputs.scope }}',
+  });
+  assert.equal(job.steps.filter((item) => item.id === 'public-postbuild').length, 1);
+  assert.ok(
+    job.steps.indexOf(postbuild) >
+      job.steps.indexOf(step('Verify affected public source with mandatory full fallback')),
+  );
+  assert.ok(
+    job.steps.indexOf(postbuild) > job.steps.indexOf(step('Test release and routing guards')),
+  );
+  for (const [scope, expected] of [
+    ['full', ['web', 'native-python']],
+    ['frontend', ['web']],
+    ['docs', []],
+  ])
+    assert.deepEqual(
+      postbuildLanes(scope).map(({ name }) => name),
+      expected,
+    );
+  for (const scope of [undefined, '', 'unknown']) assert.throws(() => postbuildLanes(scope));
+
+  const evaluate = (item, event, scope, complete) =>
     Function(
       'github',
       'steps',
-      `return (${item.if.replaceAll('steps.public-scope', "steps['public-scope']")})`,
-    )({ event_name: event }, { 'public-scope': { outputs: { scope } } });
-  for (const name of [
-    'Build the exact Python distributions',
-    'Set up checksum-pinned uv for locked CrewAI dependencies',
-    'Qualify the official CrewAI connector without model or wallet access',
-    'Qualify the official AutoGen connector without model or wallet access',
-  ]) {
-    for (const scope of ['full', undefined, 'unknown', 'docs', 'frontend']) {
-      assert.equal(evaluate(step(name), 'push', scope), !['docs', 'frontend'].includes(scope));
-      assert.equal(
-        evaluate(step(name), 'pull_request', scope),
-        !['docs', 'frontend'].includes(scope),
-      );
-    }
-  }
-  for (const name of [
-    'Exercise isolated SIWE hook browser regressions',
-    'Exercise generated footer routes in the Cloudflare runtime',
-  ]) {
-    assert.equal(evaluate(step(name), 'push', 'docs'), false);
-    for (const scope of ['full', undefined, 'unknown', 'docs', 'frontend'])
-      assert.equal(evaluate(step(name), 'pull_request', scope), scope !== 'docs');
-  }
+      `return (${item.if
+        .replaceAll('steps.public-scope', "steps['public-scope']")
+        .replaceAll('steps.public-postbuild', "steps['public-postbuild']")})`,
+    )(
+      { event_name: event },
+      {
+        'public-scope': { outputs: { scope } },
+        'public-postbuild': { outputs: { complete } },
+      },
+    );
   assert.equal(workflow.on.workflow_dispatch, null);
   const marker = step('Full Public Qualification (agentdomain.public-ci.full.v1)');
   assert.equal(job.steps.at(-1), marker);
-  for (const scope of ['full', 'docs', 'frontend', undefined, 'unknown'])
-    assert.equal(evaluate(marker, 'push', scope), scope === 'full');
+  assert.equal(
+    marker.if,
+    "steps.public-scope.outputs.scope == 'full' && steps.public-postbuild.outputs.complete == 'true'",
+  );
+  for (const event of ['push', 'pull_request', 'workflow_dispatch'])
+    for (const scope of ['full', 'docs', 'frontend', undefined, 'unknown'])
+      for (const complete of ['true', 'false', '', undefined])
+        assert.equal(
+          evaluate(marker, event, scope, complete),
+          scope === 'full' && complete === 'true',
+        );
 });

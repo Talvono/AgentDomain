@@ -102,116 +102,21 @@ jobs:
         id: public-scope
         run: pnpm ci:public --affected --cloudflare
 
-      - name: Exercise isolated SIWE hook browser regressions
-        if: steps.public-scope.outputs.scope != 'docs'
-        shell: bash
-        run: |
-          set -euo pipefail
-          tools="$RUNNER_TEMP/siwe-browser-tools"
-          archive="$RUNNER_TEMP/playwright-core-1.62.1.tgz"
-          mkdir -p "$tools"
-          curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
-            --connect-timeout 10 --max-time 60 --retry 0 \
-            --output "$archive" https://registry.npmjs.org/playwright-core/-/playwright-core-1.62.1.tgz
-          printf '%s  %s\n' 'c0f612c0404963d187ada2125eacaab71d276b42e93b75c45fb8cd0e19ed6dec7bb73512ee42e766c3a516bb85241e078bfae10cc8d71aa1dec0367af2761957' "$archive" | sha512sum --check --status
-          tar -xzf "$archive" -C "$tools"
-          browser="$(command -v google-chrome || command -v chromium || command -v chromium-browser)"
-          test -n "$browser"
-          AGENTDOMAIN_TEST_BROWSER_EXECUTABLE="$browser" node apps/frontend/test/siwe-auth.browser.mjs "$tools/package"
-
       - name: Test release and routing guards
         shell: bash
         run: |
           set -euo pipefail
           node --test scripts/npm-release.test.mjs
+          node --test scripts/public-ci-postbuild.test.mjs
           python -B -m unittest discover -s scripts -p test_release_artifacts.py
           python -B -m unittest discover -s scripts -p test_python_boundary.py
 
-      - name: Build the exact Python distributions
-        if: steps.public-scope.outputs.scope != 'docs' && steps.public-scope.outputs.scope != 'frontend'
-        shell: bash
-        run: |
-          set -euo pipefail
-          python -m venv "$RUNNER_TEMP/python-build"
-          "$RUNNER_TEMP/python-build/bin/python" -m pip install --disable-pip-version-check --require-hashes -r scripts/python-build-requirements.lock
-          "$RUNNER_TEMP/python-build/bin/python" scripts/release-artifacts.py build-python --output "$RUNNER_TEMP/python-release"
-
-      - name: Set up checksum-pinned uv for locked CrewAI dependencies
-        if: steps.public-scope.outputs.scope != 'docs' && steps.public-scope.outputs.scope != 'frontend'
-        shell: bash
+      - name: Qualify isolated web and native Python post-build lanes
+        id: public-postbuild
         env:
-          UV_VERSION: 0.11.33
-          UV_LINUX_X64_SHA256: aa9fca823c03289fb6e3460b3dc864f3ea895cafaf9b99247701a67b17d1b018
-        run: |
-          set -euo pipefail
-          archive="$RUNNER_TEMP/uv-${UV_VERSION}-linux-x64.tar.gz"
-          install_dir="$RUNNER_TEMP/uv-${UV_VERSION}"
-          curl --fail --location --silent --show-error --proto '=https' --tlsv1.2 \
-            --connect-timeout 10 --max-time 60 --retry 0 \
-            --output "$archive" "https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz"
-          printf '%s  %s\n' "$UV_LINUX_X64_SHA256" "$archive" | sha256sum --check --status
-          mkdir -p "$install_dir"
-          tar -xzf "$archive" -C "$install_dir" --strip-components=1 uv-x86_64-unknown-linux-gnu/uv
-          chmod 0755 "$install_dir/uv"
-          "$install_dir/uv" --version
-          printf '%s\n' "$install_dir" >> "$GITHUB_PATH"
-
-      - name: Qualify the official CrewAI connector without model or wallet access
-        if: steps.public-scope.outputs.scope != 'docs' && steps.public-scope.outputs.scope != 'frontend'
-        shell: bash
-        env:
-          OTEL_SDK_DISABLED: 'true'
-          CREWAI_TELEMETRY_DISABLED: 'true'
-          CREWAI_TRACING_ENABLED: 'false'
-          PYTHONDONTWRITEBYTECODE: '1'
-        run: |
-          set -euo pipefail
-          python -m venv "$RUNNER_TEMP/agentdomain-crewai"
-          uv --no-config --no-cache --no-python-downloads pip install --python "$RUNNER_TEMP/agentdomain-crewai/bin/python" --require-hashes --no-build -r packages/mcp-server/examples/crewai/requirements.lock
-          "$RUNNER_TEMP/agentdomain-crewai/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_crewai-0.11.0-py3-none-any.whl"
-          "$RUNNER_TEMP/agentdomain-crewai/bin/python" -m pip check
-          "$RUNNER_TEMP/agentdomain-crewai/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-crewai") == "0.11.0"; assert Path(importlib.util.find_spec("agentdomain_crewai").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())'
-          "$RUNNER_TEMP/agentdomain-crewai/bin/python" packages/mcp-server/test/crewai-package.py --dist "$RUNNER_TEMP/python-release/dist" -v
-          AGENTDOMAIN_CREWAI_PYTHON="$RUNNER_TEMP/agentdomain-crewai/bin/python" node packages/mcp-server/test/crewai-integration.mjs
-
-      - name: Qualify the official AutoGen connector without model or wallet access
-        if: steps.public-scope.outputs.scope != 'docs' && steps.public-scope.outputs.scope != 'frontend'
-        shell: bash
-        env:
-          OTEL_SDK_DISABLED: 'true'
-          PYTHONDONTWRITEBYTECODE: '1'
-        run: |
-          set -euo pipefail
-          python -m venv "$RUNNER_TEMP/agentdomain-autogen"
-          "$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip install --disable-pip-version-check -r packages/mcp-server/examples/autogen/framework-requirements.txt -c packages/mcp-server/examples/autogen/constraints.txt
-          "$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-0.11.0-py3-none-any.whl"
-          "$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip check
-          "$RUNNER_TEMP/agentdomain-autogen/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-autogen") == "0.11.0"; assert Path(importlib.util.find_spec("agentdomain_autogen").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())'
-          "$RUNNER_TEMP/agentdomain-autogen/bin/python" packages/autogen-plugin/test/verify_artifacts.py "$RUNNER_TEMP/python-release/dist"
-          AGENTDOMAIN_AUTOGEN_PYTHON="$RUNNER_TEMP/agentdomain-autogen/bin/python" node --test packages/mcp-server/test/autogen.integration.test.mjs
-
-      - name: Exercise generated footer routes in the Cloudflare runtime
-        if: steps.public-scope.outputs.scope != 'docs'
-        shell: bash
-        run: |
-          set -euo pipefail
-          pnpm --dir apps/frontend exec opennextjs-cloudflare preview --env preview --ip 127.0.0.1 --port 8790 >"$RUNNER_TEMP/frontend-worker.log" 2>&1 &
-          worker_pid=$!
-          trap 'kill "$worker_pid" 2>/dev/null || true' EXIT
-          ready=false
-          for attempt in $(seq 1 60); do
-            if curl --fail --silent --max-time 2 --output /dev/null http://127.0.0.1:8790/terms; then
-              ready=true
-              break
-            fi
-            sleep 1
-          done
-          if [ "$ready" != true ]; then
-            cat "$RUNNER_TEMP/frontend-worker.log"
-            exit 1
-          fi
-          node apps/frontend/test/footer-routes.smoke.mjs http://127.0.0.1:8790
+          PUBLIC_CI_POSTBUILD_SCOPE: ${{ steps.public-scope.outputs.scope }}
+        run: node scripts/public-ci-postbuild.mjs
 
       - name: Full Public Qualification (agentdomain.public-ci.full.v1)
-        if: steps.public-scope.outputs.scope == 'full'
+        if: steps.public-scope.outputs.scope == 'full' && steps.public-postbuild.outputs.complete == 'true'
         run: echo "Full public qualification passed for $GITHUB_SHA."

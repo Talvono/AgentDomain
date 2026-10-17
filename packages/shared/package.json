@@ -62,6 +62,10 @@
     "access": "public"
   },
   "scripts": {
+    "build:ci": "tsc",
+    "lint:ci": "echo ok",
+    "typecheck:ci": "tsc --noEmit",
+    "test:ci": "node --test test/*.test.mjs",
     "build": "tsc",
     "prepublishOnly": "pnpm run build",
     "typecheck": "tsc --noEmit",

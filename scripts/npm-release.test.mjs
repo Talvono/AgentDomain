@@ -12,6 +12,7 @@ import {
   publishEnvironment,
   publishRelease,
 } from './npm-release.mjs';
+import { postbuildLanes } from './public-ci-postbuild.mjs';
 
 const rows =
   PACKAGES.map(
@@ -403,6 +404,62 @@ test('Python publishing stages a fixed verified subset before the pinned OIDC ac
   assert.doesNotMatch(publish, /^ {6,}(?:if|continue-on-error):/m);
 });
 
+function assertNativeInstallOrder(source) {
+  assert(!source.includes('-r packages/mcp-server/examples/autogen/requirements.txt'));
+  for (const [name, packageTest, nativeTest] of [
+    [
+      'crewai',
+      'packages/mcp-server/test/crewai-package.py',
+      'packages/mcp-server/test/crewai-integration.mjs',
+    ],
+    [
+      'autogen',
+      'packages/autogen-plugin/test/verify_artifacts.py',
+      'packages/mcp-server/test/autogen.integration.test.mjs',
+    ],
+  ]) {
+    const dependency = `-r packages/mcp-server/examples/${name}/${name === 'crewai' ? 'requirements.lock' : 'framework-requirements.txt'}`;
+    const wheel = `--no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_${name}-${VERSION}-py3-none-any.whl"`;
+    const start = source.indexOf(dependency);
+    const end = source.indexOf(nativeTest);
+    assert.ok(start >= 0 && end > start, `${name}: dependencies and native check required`);
+    const section = source.slice(start, end + nativeTest.length);
+    let previous = -1;
+    for (const command of [
+      dependency,
+      wheel,
+      '-m pip check',
+      '-I -c',
+      `find_spec("agentdomain_${name}")`,
+      'is_relative_to',
+      packageTest,
+      nativeTest,
+    ]) {
+      const index = section.indexOf(command);
+      assert.ok(index > previous, `${name}: ${command} must retain its qualification order`);
+      previous = index;
+    }
+  }
+  for (const command of ['--no-deps --no-index --force-reinstall', '-m pip check', 'find_spec('])
+    assert.equal(source.split(command).length - 1, 2, command);
+}
+
+function nativeInstallSources() {
+  const workflow = readFileSync(
+    new URL('../.github/workflows/public-ci.yml', import.meta.url),
+    'utf8',
+  );
+  assert.match(workflow, /^        run: node scripts\/public-ci-postbuild\.mjs$/m);
+  assert.match(
+    workflow,
+    /^          PUBLIC_CI_POSTBUILD_SCOPE: \$\{\{ steps\.public-scope\.outputs\.scope \}\}$/m,
+  );
+  return [
+    postbuildLanes('full').find(({ name }) => name === 'native-python').script,
+    readFileSync(new URL('../.github/workflows/publish-python.yml', import.meta.url), 'utf8'),
+  ];
+}
+
 test('first Python release installs framework dependencies before forcibly installing local wheels', () => {
   const input = readFileSync(
     new URL('../packages/mcp-server/examples/autogen/framework-requirements.txt', import.meta.url),
@@ -420,15 +477,30 @@ test('first Python release installs framework dependencies before forcibly insta
     );
     assert(!line.includes('agentdomain'));
   }
-  for (const file of ['public-ci.yml', 'publish-python.yml']) {
-    const workflow = readFileSync(new URL(`../.github/workflows/${file}`, import.meta.url), 'utf8');
-    assert(!workflow.includes('-r packages/mcp-server/examples/autogen/requirements.txt'));
-    assert(
-      workflow.indexOf('autogen/framework-requirements.txt') <
-        workflow.indexOf('--force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen'),
-    );
-    assert.equal(workflow.split('--no-deps --no-index --force-reinstall').length - 1, 2);
-    assert.equal(workflow.split('-m pip check').length - 1, 2);
-    assert.equal(workflow.split('find_spec(').length - 1, 2);
+  for (const source of nativeInstallSources()) assertNativeInstallOrder(source);
+});
+
+test('both native qualification paths reject missing or reordered framework, wheel and runtime checks', () => {
+  for (const source of nativeInstallSources()) {
+    for (const command of [
+      'crewai/requirements.lock',
+      'autogen/framework-requirements.txt',
+      '--no-deps --no-index --force-reinstall',
+      '-m pip check',
+      'find_spec(',
+      'is_relative_to',
+      'crewai-package.py',
+      'verify_artifacts.py',
+      'crewai-integration.mjs',
+      'autogen.integration.test.mjs',
+    ])
+      assert.throws(() => assertNativeInstallOrder(source.replaceAll(command, '')));
+    const dependency = '-r packages/mcp-server/examples/autogen/framework-requirements.txt';
+    const wheel = `--no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-${VERSION}-py3-none-any.whl"`;
+    const reordered = source
+      .replace(dependency, 'DEPENDENCY_PLACEHOLDER')
+      .replace(wheel, dependency)
+      .replace('DEPENDENCY_PLACEHOLDER', wheel);
+    assert.throws(() => assertNativeInstallOrder(reordered));
   }
 });

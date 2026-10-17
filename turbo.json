@@ -1,6 +1,69 @@
 {
   "$schema": "https://turbo.build/schema.json",
   "tasks": {
+    "build:ci": {
+      "dependsOn": ["^build:ci"],
+      "outputs": ["dist/**", "out/**", ".next/**", ".open-next/**", ".astro/**"],
+      "cache": false
+    },
+    "lint:ci": {
+      "dependsOn": ["^lint:ci"],
+      "cache": false
+    },
+    "typecheck:ci": {
+      "dependsOn": ["^build:ci", "build:ci"],
+      "outputs": [],
+      "cache": false
+    },
+    "test:ci": {
+      "dependsOn": ["^build:ci", "build:ci", "typecheck:ci"],
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
+    "@agentdomain/langchain-plugin#lint:ci": {
+      "dependsOn": ["^lint:ci", "^build:ci", "build:ci"],
+      "cache": false
+    },
+    "@agentdomain/langchain-plugin#typecheck:ci": {
+      "dependsOn": ["^build:ci", "build:ci", "lint:ci"],
+      "outputs": [],
+      "cache": false
+    },
+    "@agentdomain/frontend#build:ci": {
+      "dependsOn": ["^build:ci"],
+      "outputs": [],
+      "cache": false
+    },
+    "@agentdomain/frontend#test:ci": {
+      "dependsOn": ["^build:ci"],
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
+    "@agentdomain/frontend#typecheck:ci": {
+      "dependsOn": ["^build:ci"],
+      "outputs": [],
+      "cache": false
+    },
+    "@agentdomain/docs#typecheck:ci": {
+      "dependsOn": ["^build:ci", "lint:ci"],
+      "outputs": [],
+      "cache": false
+    },
+    "@agentdomain/docs#test:ci": {
+      "dependsOn": ["^build:ci", "typecheck:ci"],
+      "outputs": ["coverage/**"],
+      "cache": false
+    },
+    "@agentdomain/docs#build:ci": {
+      "dependsOn": ["^build:ci", "test:ci"],
+      "outputs": ["dist/**", ".astro/**"],
+      "cache": false
+    },
+    "@agentdomain/docs#validate:output:ci": {
+      "dependsOn": ["build:ci"],
+      "outputs": [],
+      "cache": false
+    },
     "build": {
       "dependsOn": ["^build"],
       "outputs": ["dist/**", "out/**", ".next/**", ".open-next/**", ".astro/**"]

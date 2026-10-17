@@ -13,6 +13,7 @@ import {
   verifyReleaseCi,
 } from './verify-release-ci.mjs';
 import { assertReleaseContext, RELEASE_POLICY } from './public-release-identity.mjs';
+import { postbuildLanes } from './public-ci-postbuild.mjs';
 
 const context = {
   repository: '0xmdrakib/AgentDomain',
@@ -573,8 +574,31 @@ test('public workflow combines checks once without weakening required contexts o
   assert.ok(
     commands.some((command) => command.includes('node --test scripts/npm-release.test.mjs')),
   );
-  assert.ok(commands.some((command) => command.includes('siwe-auth.browser.mjs')));
-  assert.ok(commands.some((command) => command.includes('footer-routes.smoke.mjs')));
+  const postbuild = job.steps.filter((step) => step.id === 'public-postbuild');
+  assert.equal(postbuild.length, 1);
+  assert.equal(postbuild[0].run, 'node scripts/public-ci-postbuild.mjs');
+  assert.equal(postbuild[0].if, undefined);
+  assert.deepEqual(postbuild[0].env, {
+    PUBLIC_CI_POSTBUILD_SCOPE: '${{ steps.public-scope.outputs.scope }}',
+  });
+  const lanes = postbuildLanes('full');
+  assert.deepEqual(
+    lanes.map(({ name }) => name),
+    ['web', 'native-python'],
+  );
+  assert.ok(
+    lanes[0].script.includes('node apps/frontend/test/siwe-auth.browser.mjs "$tools/package"'),
+  );
+  assert.ok(
+    lanes[0].script.includes(
+      'pnpm --dir apps/frontend exec opennextjs-cloudflare preview --env preview --ip 127.0.0.1 --port 8790',
+    ),
+  );
+  assert.ok(
+    lanes[0].script.includes(
+      'node apps/frontend/test/footer-routes.smoke.mjs http://127.0.0.1:8790',
+    ),
+  );
   for (const step of job.steps) {
     assert.equal(step['continue-on-error'], undefined);
   }
@@ -649,36 +673,53 @@ test('public CrewAI install uses a pinned verified tool and fresh hash-checked w
   assert.equal(job['runs-on'], 'ubuntu-24.04');
   const checkout = job.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
   assert.equal(checkout.with['persist-credentials'], 'false');
-  const setup = job.steps.find(
-    (step) => step.name === 'Set up checksum-pinned uv for locked CrewAI dependencies',
-  );
-  assert.deepEqual(setup.env, {
-    UV_VERSION: '0.11.33',
-    UV_LINUX_X64_SHA256: 'aa9fca823c03289fb6e3460b3dc864f3ea895cafaf9b99247701a67b17d1b018',
+  const postbuild = job.steps.find((step) => step.id === 'public-postbuild');
+  assert.equal(postbuild.run, 'node scripts/public-ci-postbuild.mjs');
+  assert.equal(postbuild.if, undefined);
+  assert.equal(postbuild['continue-on-error'], undefined);
+  assert.deepEqual(postbuild.env, {
+    PUBLIC_CI_POSTBUILD_SCOPE: '${{ steps.public-scope.outputs.scope }}',
   });
-  assert.equal(setup.shell, 'bash');
-  const fullQualification =
-    "steps.public-scope.outputs.scope != 'docs' && steps.public-scope.outputs.scope != 'frontend'";
-  assert.equal(setup.if, fullQualification);
-  assert.equal(setup['continue-on-error'], undefined);
+  const lanes = postbuildLanes('full');
+  assert.deepEqual(
+    lanes.map(({ name }) => name),
+    ['web', 'native-python'],
+  );
+  for (const scope of ['docs', 'frontend'])
+    assert.ok(postbuildLanes(scope).every(({ name }) => name !== 'native-python'));
+  for (const scope of [undefined, '', 'unknown']) assert.throws(() => postbuildLanes(scope));
+  const native = lanes[1].script;
+  const helper = await readFile(new URL('./public-ci-postbuild.mjs', import.meta.url), 'utf8');
+  assert.match(
+    helper,
+    /spawnLane\(\s*'bash',\s*\[\s*'--noprofile',\s*'--norc',\s*'-e',\s*'-u',\s*'-o',\s*'pipefail',\s*'-c'/,
+  );
+  assert.match(native, /^UV_VERSION=0\.11\.33$/m);
+  assert.match(
+    native,
+    /^UV_LINUX_X64_SHA256=aa9fca823c03289fb6e3460b3dc864f3ea895cafaf9b99247701a67b17d1b018$/m,
+  );
   for (const command of [
-    'set -euo pipefail',
     "--proto '=https' --tlsv1.2",
     '--connect-timeout 10 --max-time 60 --retry 0',
-    'https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-x86_64-unknown-linux-gnu.tar.gz',
+    'https://github.com/astral-sh/uv/releases/download/$UV_VERSION/uv-x86_64-unknown-linux-gnu.tar.gz',
     'sha256sum --check --status',
     '--strip-components=1 uv-x86_64-unknown-linux-gnu/uv',
   ]) {
-    assert.ok(setup.run.includes(command), command);
+    assert.ok(native.includes(command), command);
   }
-  assert.ok(setup.run.indexOf('sha256sum --check --status') < setup.run.indexOf('tar -xzf'));
-  assert.doesNotMatch(setup.run, /\|\s*(?:sh|bash)\b|\|\|/);
-  const crewai = job.steps.find(
-    (step) => step.name === 'Qualify the official CrewAI connector without model or wallet access',
+  assert.ok(native.indexOf('sha256sum --check --status') < native.indexOf('tar -xzf'));
+  assert.ok(
+    native.indexOf('"$install_dir/uv" --version') <
+      native.indexOf('uv --no-config --no-cache --no-python-downloads pip install'),
   );
-  assert.ok(job.steps.indexOf(setup) < job.steps.indexOf(crewai));
-  assert.equal(crewai.if, fullQualification);
-  assert.equal(crewai['continue-on-error'], undefined);
+  assert.ok(native.includes('export PATH="$install_dir:$PATH"'));
+  assert.ok(
+    native.includes(
+      'export OTEL_SDK_DISABLED=true CREWAI_TELEMETRY_DISABLED=true CREWAI_TRACING_ENABLED=false PYTHONDONTWRITEBYTECODE=1',
+    ),
+  );
+  assert.doesNotMatch(native, /\|\s*(?:sh|bash)\b|\|\|/);
   for (const command of [
     'python -m venv "$RUNNER_TEMP/agentdomain-crewai"',
     'uv --no-config --no-cache --no-python-downloads pip install --python "$RUNNER_TEMP/agentdomain-crewai/bin/python" --require-hashes --no-build -r packages/mcp-server/examples/crewai/requirements.lock',
@@ -688,9 +729,9 @@ test('public CrewAI install uses a pinned verified tool and fresh hash-checked w
     'packages/mcp-server/test/crewai-package.py',
     'packages/mcp-server/test/crewai-integration.mjs',
   ]) {
-    assert.ok(crewai.run.includes(command), command);
+    assert.ok(native.includes(command), command);
   }
-  assert.doesNotMatch(crewai.run, /--no-verify|--no-deps.*requirements\.lock|\|\|/);
+  assert.doesNotMatch(native, /--no-verify|--no-deps.*requirements\.lock|\|\|/);
   const lock = await readFile(
     new URL('../packages/mcp-server/examples/crewai/requirements.lock', import.meta.url),
     'utf8',

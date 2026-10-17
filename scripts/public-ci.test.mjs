@@ -3,7 +3,10 @@ import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { publicBuildArgs, publicLintArgs, runCi } from './public-ci.mjs';
+import { publicBuildArgs, publicLintArgs, runCi, runPublicCi } from './public-ci.mjs';
+import { PUBLIC_CI_GRAPH_CONTRACT, inspectPublicCiGraph } from './public-ci-graph.mjs';
+import './public-ci-graph.test.mjs';
+import './public-ci-task-graph.test.mjs';
 
 const publicSteps = [
   ['check:public-boundary'],
@@ -18,6 +21,11 @@ const publicSteps = [
 const combinedPublicSteps = [
   ...publicSteps.slice(0, -1),
   ['build:public', '--filter=!@agentdomain/frontend'],
+];
+const fullGraphSteps = [
+  ...publicSteps.slice(0, 4),
+  ...PUBLIC_CI_GRAPH_CONTRACT.rootTests,
+  PUBLIC_CI_GRAPH_CONTRACT.graphArgs,
 ];
 const buildManifest = JSON.parse(
   await readFile(new URL('../package.json', import.meta.url), 'utf8'),
@@ -55,10 +63,14 @@ const dryRuns = (workspace) =>
     ...environment,
   ]);
 const cloudflareSteps = (docsCommand) => [
-  ...(docsCommand === 'validate:output'
+  ...(['validate:output', 'validate:output:ci'].includes(docsCommand)
     ? [
-        ['--filter', '@agentdomain/frontend', 'run', 'assets'],
-        ['--filter', '@agentdomain/frontend', 'run', 'test:isolation'],
+        ...(docsCommand === 'validate:output'
+          ? [
+              ['--filter', '@agentdomain/frontend', 'run', 'assets'],
+              ['--filter', '@agentdomain/frontend', 'run', 'test:isolation'],
+            ]
+          : []),
         ['--filter', '@agentdomain/frontend', 'exec', 'opennextjs-cloudflare', 'build'],
         [
           '--filter',
@@ -302,11 +314,42 @@ test('installed adapter and transitive build-helper drift restore the complete e
   }
 });
 
-test('combined CI defers only the earlier frontend build and keeps every Worker dry-run', () => {
+test('combined CI uses one fresh guarded full graph and keeps every Worker dry-run', () => {
   assert.deepEqual(capture(['--cloudflare']), [
-    ...combinedPublicSteps,
-    ...cloudflareSteps('validate:output'),
+    ...fullGraphSteps,
+    ...cloudflareSteps('validate:output:ci'),
   ]);
+});
+
+test('an unknown graph profile restores the original full sequence, never a reduced success', () => {
+  const commands = [];
+  runPublicCi((args) => commands.push(args), { cloudflare: true, inspectGraph: () => null });
+  assert.deepEqual(commands, [...combinedPublicSteps, ...cloudflareSteps('validate:output')]);
+  assert.ok(!commands.some((args) => args.includes('test:ci')));
+});
+
+test('graph source drift after root tests, after graph execution or after artifact checks blocks success', () => {
+  for (const failAt of [1, 2, 3]) {
+    const original = inspectPublicCiGraph();
+    assert.ok(original);
+    let checks = 0;
+    const commands = [];
+    assert.throws(
+      () =>
+        runPublicCi((args) => commands.push(args), {
+          cloudflare: true,
+          inspectGraph: () => ({
+            ...original,
+            assertUnchanged() {
+              if (++checks === failAt) throw new Error('PUBLIC_CI_GRAPH_SOURCE_CHANGED');
+            },
+          }),
+        }),
+      /PUBLIC_CI_GRAPH_SOURCE_CHANGED/,
+    );
+    if (failAt === 1) assert.ok(!commands.some((args) => args.includes('test:ci')));
+    if (failAt < 3) assert.ok(!commands.some((args) => args.includes('opennextjs-cloudflare')));
+  }
 });
 
 test('nonempty Next-build overrides reject both Cloudflare modes before running any command', () => {
@@ -351,8 +394,8 @@ test('absent or empty Next-build overrides preserve deferral and standalone Clou
         combinedPublicSteps.at(-1),
       );
       assert.deepEqual(capture(['--cloudflare']), [
-        ...combinedPublicSteps,
-        ...cloudflareSteps('validate:output'),
+        ...fullGraphSteps,
+        ...cloudflareSteps('validate:output:ci'),
       ]);
       assert.deepEqual(capture(['--cloudflare-only']), cloudflareSteps('check'));
       assert.deepEqual(capture([]), publicSteps);
@@ -390,7 +433,7 @@ test('standalone commands never defer builds or trust output left by another inv
 });
 
 test('every failed combined stage stops immediately, including reused docs output validation', () => {
-  const expected = [...combinedPublicSteps, ...cloudflareSteps('validate:output')];
+  const expected = [...fullGraphSteps, ...cloudflareSteps('validate:output:ci')];
   for (let failure = 0; failure < expected.length; failure++) {
     const commands = [];
     const error = new Error(`stage ${failure} failed`);
@@ -400,6 +443,26 @@ test('every failed combined stage stops immediately, including reused docs outpu
           commands.push(command);
           if (commands.length === failure + 1) throw error;
         }),
+      (actual) => actual === error,
+    );
+    assert.deepEqual(commands, expected.slice(0, failure + 1));
+  }
+});
+
+test('every failed unknown-profile full fallback stage stops without trying CI aliases', () => {
+  const expected = [...combinedPublicSteps, ...cloudflareSteps('validate:output')];
+  for (let failure = 0; failure < expected.length; failure++) {
+    const commands = [];
+    const error = new Error(`fallback stage ${failure} failed`);
+    assert.throws(
+      () =>
+        runPublicCi(
+          (args) => {
+            commands.push(args);
+            if (commands.length === failure + 1) throw error;
+          },
+          { cloudflare: true, inspectGraph: () => null },
+        ),
       (actual) => actual === error,
     );
     assert.deepEqual(commands, expected.slice(0, failure + 1));
@@ -448,6 +511,7 @@ test('CLI rejects skip flags, unknown options and combined modes before running 
     ['--skip-frontend'],
     ['--reuse-frontend'],
     ['--cloudflare', '--skipNextBuild'],
+    ['--graph'],
   ]) {
     assert.throws(() => runCi(args, () => assert.fail('must not run')), /Usage:/);
     const result = spawnSync(process.execPath, [filename, ...args], { encoding: 'utf8' });
