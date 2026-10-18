@@ -38,6 +38,11 @@ export const AUTOMATION_LIMITS = Object.freeze({
   releases: 100,
   attestations: 4,
 });
+export const READINESS_LIMITS = Object.freeze({
+  rounds: 6,
+  deadlineMs: 360_000,
+  backoffMs: Object.freeze([30_000, 30_000, 60_000, 60_000, 120_000]),
+});
 export const PUBLISHERS = Object.freeze({
   'publish-npm.yml': Object.freeze({
     name: 'Publish npm packages',
@@ -157,24 +162,121 @@ export function finalizerContext(env, event) {
   assertRun(event.workflow_run, context, workflow);
   return { context, workflow };
 }
-export async function planCompletion({ env, event, source, emit = () => {} }) {
-  const { context } = finalizerContext(env, event);
+export async function planCompletion({
+  env,
+  event,
+  source,
+  api,
+  registryJson,
+  qualify = qualifyReleaseCi,
+  bindSource = releaseSourceContext,
+  emit = () => {},
+  now = () => performance.now(),
+  sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+}) {
+  const { context: initial, workflow: triggered } = finalizerContext(env, event);
   const state = await source();
   need(
-    state.sha === context.sha && state.clean === true && SHA.test(state.parentSha ?? ''),
+    state.sha === initial.sha && state.clean === true && SHA.test(state.parentSha ?? ''),
     'CHECKOUT_INVALID',
   );
   const version = stableVersion(state.version),
     parentVersion = stableVersion(state.parentVersion);
   need(compareVersions(version, parentVersion) >= 0, 'VERSION_NOT_INCREASING');
-  // This local scheduling hint grants no publication or provenance authority.
   const output = {
-    'release-needed': String(version !== parentVersion),
+    'release-needed': 'false',
     version,
-    'source-sha': context.sha,
+    'source-sha': initial.sha,
   };
+  if (version === parentVersion) {
+    emit({ ...output, reason: 'unchanged-version' });
+    return { ...output, reason: 'unchanged-version' };
+  }
+  const ciPath = `repos/${initial.repository}/actions/workflows/public-ci.yml/runs?branch=main&event=push&head_sha=${initial.sha}&per_page=10`;
+  const candidates = boundedRuns(await api(ciPath)).sort((a, b) => b.id - a.id);
+  need(candidates.length > 0, 'CI_MISSING');
+  const ci = candidates[0],
+    context = bindSource(env, { workflow: 'complete-public-release.yml', sourceRun: ci });
+  need(isDeepStrictEqual(await checkout(source, context), state), 'CHECKOUT_CHANGED');
+  const own = await ownRun(env, context, 'complete-public-release.yml', api);
+  await qualifyParent(state, context, api);
+  need((await qualify(context, api)) === ci.id, 'CI_BINDING');
+  const publication = await publisherPair(context, version, ci, api);
+  if (!publication) {
+    emit({ ...output, reason: 'waiting-for-other-publisher' });
+    return { ...output, reason: 'waiting-for-other-publisher' };
+  }
+  const latest = publication.latest[triggered];
+  need(
+    latest.id === event.workflow_run.id && latest.run_attempt === event.workflow_run.run_attempt,
+    'STALE_PUBLISHER_EVENT',
+  );
+  await waitForRegistryVersions({ context, version, api, registryJson, now, sleep });
+  need(isDeepStrictEqual(await checkout(source, context), state), 'CHECKOUT_CHANGED');
+  need(
+    isDeepStrictEqual(
+      runBinding(await api(`repos/${context.repository}/actions/runs/${own.id}`)),
+      runBinding(own),
+    ),
+    'OWN_RUN_CHANGED',
+  );
+  // Readiness grants no publication/provenance authority; complete independently requalifies everything.
+  output['release-needed'] = 'true';
+  output.reason = 'registry-ready';
   emit(output);
   return output;
+}
+async function waitForRegistryVersions({ context, version, api, registryJson, now, sleep }) {
+  const pending = new Map([
+    ...NPM_PACKAGES.map((slug) => [
+      `https://registry.npmjs.org/${encodeURIComponent(`@agentdomain/${slug}`)}/${version}`,
+      { name: `@agentdomain/${slug}`, ecosystem: 'npm' },
+    ]),
+    ...PYTHON_PACKAGES.map((name) => [
+      `https://pypi.org/pypi/${name}/${version}/json`,
+      { name, ecosystem: 'pypi' },
+    ]),
+  ]);
+  const deadline = now() + READINESS_LIMITS.deadlineMs;
+  const remaining = () => {
+    const ms = deadline - now();
+    need(ms > 0, 'READINESS_DEADLINE');
+    return ms;
+  };
+  const signal = () =>
+    AbortSignal.timeout(Math.max(1, Math.min(AUTOMATION_LIMITS.requestMs, Math.ceil(remaining()))));
+  for (let round = 0; round < READINESS_LIMITS.rounds; round++) {
+    remaining();
+    for (const [url, expected] of pending) {
+      const metadata = await registryJson(url, {
+        optional: true,
+        requireObject: true,
+        signal: signal(),
+      });
+      remaining();
+      if (metadata === null) continue; // Only the native transport's explicit 404 means processing.
+      const identity = expected.ecosystem === 'npm' ? metadata : metadata?.info;
+      need(
+        identity?.name === expected.name && identity.version === version,
+        'REGISTRY_VERSION_IDENTITY',
+      );
+      pending.delete(url);
+    }
+    if (!pending.size) {
+      const main = await api(`repos/${context.repository}/commits/main`, { signal: signal() });
+      remaining();
+      need(main.sha === context.sha, 'MAIN_ADVANCED');
+      return;
+    }
+    if (round === READINESS_LIMITS.rounds - 1) fail('REGISTRY_NOT_READY');
+    const delay = READINESS_LIMITS.backoffMs[round];
+    need(delay < remaining(), 'READINESS_DEADLINE');
+    await sleep(delay);
+    remaining();
+    const main = await api(`repos/${context.repository}/commits/main`, { signal: signal() });
+    remaining();
+    need(main.sha === context.sha, 'MAIN_ADVANCED');
+  }
 }
 async function checkout(source, context) {
   const state = await source();
@@ -598,7 +700,7 @@ export function createTransport({ token, fetcher = fetch } = {}) {
     total = 0;
   async function bytes(
     url,
-    { maxBytes = AUTOMATION_LIMITS.jsonBytes, method = 'GET', body, optional = false } = {},
+    { maxBytes = AUTOMATION_LIMITS.jsonBytes, method = 'GET', body, optional = false, signal } = {},
   ) {
     need(++requests <= AUTOMATION_LIMITS.requests, 'REQUEST_BUDGET');
     const parsed = new URL(url);
@@ -626,13 +728,18 @@ export function createTransport({ token, fetcher = fetch } = {}) {
         'x-github-api-version': '2022-11-28',
       });
     if (body) headers['content-type'] = 'application/json';
+    const requestSignal = signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(AUTOMATION_LIMITS.requestMs)])
+      : AbortSignal.timeout(AUTOMATION_LIMITS.requestMs);
+    requestSignal.throwIfAborted();
     const response = await fetcher(url, {
       method,
       headers,
       body: body ? JSON.stringify(body) : undefined,
       redirect: 'error',
-      signal: AbortSignal.timeout(AUTOMATION_LIMITS.requestMs),
+      signal: requestSignal,
     });
+    requestSignal.throwIfAborted();
     if (optional && response.status === 404) {
       await response.body?.cancel();
       return null;
@@ -644,6 +751,7 @@ export function createTransport({ token, fetcher = fetch } = {}) {
     const chunks = [];
     let size = 0;
     for await (const chunk of response.body) {
+      requestSignal.throwIfAborted();
       size += chunk.length;
       total += chunk.length;
       need(size <= maxBytes && total <= AUTOMATION_LIMITS.totalBytes, 'REMOTE_TOO_LARGE');
@@ -653,7 +761,11 @@ export function createTransport({ token, fetcher = fetch } = {}) {
   }
   const json = async (url, options) => {
     const result = await bytes(url, options);
-    return result === null ? null : JSON.parse(result);
+    if (result === null) return null;
+    const value = JSON.parse(result);
+    if (options?.requireObject)
+      need(value !== null && typeof value === 'object' && !Array.isArray(value), 'REMOTE_CONTENT');
+    return value;
   };
   const api = (path, options) => json(`https://api.github.com/${path}`, options);
   api.reserve = (count) => need(requests + count <= AUTOMATION_LIMITS.requests, 'REQUEST_BUDGET');
@@ -1010,6 +1122,7 @@ async function main() {
     const completion = {
       ...deps,
       event: JSON.parse(bytes),
+      registryJson: transport.json,
     };
     if (process.argv[2] === 'completion-plan') await planCompletion(completion);
     else
