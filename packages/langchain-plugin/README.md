@@ -5,7 +5,7 @@ Base, with optional unsigned auto-renew planning. Uses the real
 `@langchain/core/tools` API and the public AgentDomain SDK. No model API key or
 paid LLM is needed to invoke these tools.
 
-These examples use version `0.11.0` with SDK `0.11.0`. For local development,
+These examples use version `0.11.1` with SDK `0.11.1`. For local development,
 build the SDK followed by this package from the public workspace checkout.
 
 ## Install
@@ -13,7 +13,7 @@ build the SDK followed by this package from the public workspace checkout.
 Install the matching package and framework peer:
 
 ```bash
-npm install @agentdomain/langchain-plugin@0.11.0 @langchain/core@^1.2.11
+npm install @agentdomain/langchain-plugin@0.11.1 @langchain/core@^1.2.11
 ```
 
 Requires Node.js 20 or newer and ESM. Tested against `@langchain/core` 1.2.11 and
@@ -102,7 +102,7 @@ disabled and pass it as `publicClient`. Do not place RPC URLs, contract addresse
 chains, API keys, or private keys in tool arguments. Unknown fields are rejected.
 The adapter never fetches metadata, linked names, or CCIP callback URLs.
 
-To use API lookup, also install `@agentdomain/sdk@^0.11.0` in your application:
+To use API lookup, also install `@agentdomain/sdk@^0.11.1` in your application:
 
 ```js
 import { AgentDomain } from '@agentdomain/sdk';
@@ -175,4 +175,4 @@ See `LICENSE` and `NOTICE`.
 - [Official core tool implementation](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/src/tools/index.ts)
 - [Official LangChain core license](https://github.com/langchain-ai/langchainjs/blob/main/libs/langchain-core/LICENSE)
 - [AgentDomain framework guide](https://docs.agentdomain.app/frameworks/langchain)
-- [Public SDK source](https://github.com/0xmdrakib/AgentDomain/tree/main/packages/sdk)
+- [Public SDK source](https://github.com/Talvono/AgentDomain/tree/main/packages/sdk)

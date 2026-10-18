@@ -58,7 +58,6 @@ test('machine docs are deterministic, source-derived and valid OpenAPI without e
     const actual =
       pkg.ecosystem === 'npm' ? JSON.parse(manifest) : parsePythonPackage(manifest, pkg.name);
     assert.equal(pkg.version, actual.version);
-    assert.equal(pkg.version, '0.11.0');
     assert.equal(pkg.publication, 'workspace-version-not-registry-verification');
   }
 });
@@ -66,6 +65,12 @@ test('machine docs are deterministic, source-derived and valid OpenAPI without e
 test('Python package discovery parses TOML and rejects mismatched or dynamic release metadata', () => {
   const source = `[project]\nname = "agentdomain-crewai"\nversion = "0.11.0"\ndescription = "Native CrewAI integration"\nrequires-python = ">=3.10"\nlicense = "Apache-2.0"\n`;
   assert.equal(parsePythonPackage(source, 'agentdomain-crewai').version, '0.11.0');
+  for (const version of ['0.12.0', '2.0.0']) {
+    assert.equal(
+      parsePythonPackage(source.replace('0.11.0', version), 'agentdomain-crewai').version,
+      version,
+    );
+  }
   assert.throws(() => parsePythonPackage(source, 'agentdomain-autogen'), /Invalid public/);
   assert.throws(
     () => parsePythonPackage(source + 'dynamic = ["version"]\n', 'agentdomain-crewai'),
@@ -79,6 +84,36 @@ test('Python package discovery parses TOML and rejects mismatched or dynamic rel
     () => parsePythonPackage(source.replace('version = "0.11.0"', ''), 'agentdomain-crewai'),
     /Invalid public/,
   );
+});
+
+test('machine validation rejects stale versions, substituted manifests and invented publication status', async () => {
+  const documents = await createMachineDocuments();
+  for (const tamper of [
+    (source) => {
+      source.packages[0].version = `${source.packages[0].version}-stale`;
+    },
+    (source) => {
+      source.packages[0].manifest = 'package.json';
+    },
+    (source) => {
+      source.packages[0].publication = 'published';
+    },
+    (source) => {
+      source.packages[0].name = '@agentdomain/unreviewed';
+    },
+  ]) {
+    const changed = { ...documents };
+    const index = JSON.parse(documents['api-index.json']);
+    tamper(index.source);
+    const discovery = JSON.parse(documents['.well-known/agentdomain.json']);
+    const openapi = JSON.parse(documents['openapi.json']);
+    discovery.source = index.source;
+    openapi['x-source'] = index.source;
+    changed['api-index.json'] = JSON.stringify(index);
+    changed['.well-known/agentdomain.json'] = JSON.stringify(discovery);
+    changed['openapi.json'] = JSON.stringify(openapi);
+    await assert.rejects(validateMachineDocuments(changed));
+  }
 });
 
 test('documented route extraction canonicalizes only real HTTP paths', () => {

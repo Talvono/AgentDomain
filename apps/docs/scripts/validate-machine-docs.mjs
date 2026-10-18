@@ -4,9 +4,30 @@ import { resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import SwaggerParser from '@apidevtools/swagger-parser';
 
-import { MACHINE_FILES, createMachineDocuments } from './machine-docs.mjs';
+import { MACHINE_FILES, createMachineDocuments, parsePythonPackage } from './machine-docs.mjs';
 import { DOCS_ORIGIN, API_ORIGIN } from './public-api-contract.mjs';
 import { EXPECTED_DOCS, findForbiddenMatches, routeForDoc } from './validate-content.mjs';
+
+const publicRoot = fileURLToPath(new URL('../../../', import.meta.url));
+const packageMetadata = [
+  ...['shared', 'sdk', 'mcp-server', 'agentkit-plugin', 'eliza-plugin', 'langchain-plugin'].map(
+    (directory) => ({
+      name: `@agentdomain/${directory}`,
+      ecosystem: 'npm',
+      manifest: `packages/${directory}/package.json`,
+    }),
+  ),
+  {
+    name: 'agentdomain-crewai',
+    ecosystem: 'pypi',
+    manifest: 'packages/crewai-plugin/pyproject.toml',
+  },
+  {
+    name: 'agentdomain-autogen',
+    ecosystem: 'pypi',
+    manifest: 'packages/autogen-plugin/pyproject.toml',
+  },
+];
 
 function walk(value, visit) {
   if (!value || typeof value !== 'object') return;
@@ -49,8 +70,25 @@ export async function validateMachineDocuments(documents) {
       .sort(),
     ['agentdomain-autogen', 'agentdomain-crewai'],
   );
+  assert.deepEqual(
+    index.source.packages.map((pkg) => pkg.manifest).sort(),
+    packageMetadata.map((pkg) => pkg.manifest).sort(),
+  );
   for (const pkg of index.source.packages) {
-    assert.equal(pkg.version, '0.11.0');
+    const expected = packageMetadata.find((entry) => entry.manifest === pkg.manifest);
+    assert.equal(pkg.name, expected.name);
+    assert.equal(pkg.ecosystem, expected.ecosystem);
+    const content = await readFile(join(publicRoot, expected.manifest), 'utf8');
+    const actual =
+      expected.ecosystem === 'npm'
+        ? JSON.parse(content)
+        : parsePythonPackage(content, expected.name);
+    assert.equal(actual.name, expected.name);
+    assert.equal(
+      pkg.version,
+      actual.version,
+      `${pkg.manifest}: source version differs from workspace metadata`,
+    );
     assert.equal(pkg.publication, 'workspace-version-not-registry-verification');
   }
   assert.match(index.source.sourceSha256, /^[a-f0-9]{64}$/);

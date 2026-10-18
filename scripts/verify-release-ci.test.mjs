@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, readdir, mkdtemp, writeFile, rm, copyFile } from 'node:fs/promises';
+import { readFile, readdir, mkdtemp, writeFile, rm, copyFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -11,9 +11,38 @@ import {
   FULL_PUBLIC_CI_STEP,
   qualifyReleaseCi,
   verifyReleaseCi,
+  githubRead,
 } from './verify-release-ci.mjs';
-import { assertReleaseContext, RELEASE_POLICY } from './public-release-identity.mjs';
+import {
+  assertReleaseContext,
+  assertAutomaticReleaseEvent,
+  assertReleaseCheckout,
+  releaseContext,
+  releaseSourceContext,
+  RELEASE_POLICY,
+  RELEASE_CI_LIMITS as IDENTITY_LIMITS,
+} from './public-release-identity.mjs';
 import { postbuildLanes } from './public-ci-postbuild.mjs';
+
+// Child fixtures inherit OS necessities, not the hosting workflow's identity or credentials.
+function fixtureEnvironment(overrides = {}, ambient = process.env) {
+  const allowed = new Set([
+    'path',
+    'systemroot',
+    'windir',
+    'home',
+    'userprofile',
+    'tmp',
+    'temp',
+    'tmpdir',
+  ]);
+  return {
+    ...Object.fromEntries(
+      Object.entries(ambient).filter(([key]) => allowed.has(key.toLowerCase())),
+    ),
+    ...overrides,
+  };
+}
 
 const context = {
   repository: '0xmdrakib/AgentDomain',
@@ -75,6 +104,534 @@ const payload = (runs = [run]) => ({
   },
   source_commit: { sha: context.sha, commit: { verification: { verified: true } } },
   triggering_operator: { login: '0xmdrakib', id: 113634586 },
+});
+
+const automaticContext = {
+  ...context,
+  repository: 'Talvono/AgentDomain',
+  owner: 'Talvono',
+  ownerId: '342912183',
+  workflowRef: 'Talvono/AgentDomain/.github/workflows/publish-npm.yml@refs/heads/main',
+  eventName: 'workflow_run',
+};
+const automaticRepository = {
+  full_name: automaticContext.repository,
+  id: 1310051881,
+  owner: { login: 'Talvono', id: 342912183, type: 'Organization' },
+};
+const automaticRun = {
+  ...run,
+  name: 'Public CI',
+  workflow_id: 100,
+  url: 'https://api.github.com/repos/Talvono/AgentDomain/actions/runs/1',
+  repository: automaticRepository,
+  head_repository: automaticRepository,
+};
+const automaticEvent = () =>
+  structuredClone({
+    action: 'completed',
+    repository: automaticRepository,
+    workflow_run: automaticRun,
+  });
+const boundContext = () => ({
+  ...automaticContext,
+  sourceRun: assertAutomaticReleaseEvent(automaticContext, automaticEvent()),
+});
+const automaticPayload = (runs = [automaticRun]) => {
+  const p = payload(runs);
+  p.triggering_operator.type = 'User';
+  return p;
+};
+const automaticEnvironment = (eventPath) => ({
+  GITHUB_ACTIONS: 'true',
+  GITHUB_EVENT_NAME: 'workflow_run',
+  GITHUB_EVENT_PATH: eventPath,
+  GITHUB_REPOSITORY: automaticContext.repository,
+  GITHUB_REPOSITORY_ID: automaticContext.repositoryId,
+  GITHUB_REPOSITORY_OWNER: automaticContext.owner,
+  GITHUB_REPOSITORY_OWNER_ID: automaticContext.ownerId,
+  GITHUB_ACTOR: automaticContext.actor,
+  GITHUB_ACTOR_ID: automaticContext.actorId,
+  GITHUB_TRIGGERING_ACTOR: automaticContext.triggeringActor,
+  GITHUB_WORKFLOW_REF: automaticContext.workflowRef,
+  GITHUB_REF: automaticContext.ref,
+  GITHUB_SHA: automaticContext.sha,
+});
+
+function fixtureRequest(p, paths) {
+  return async (path) => {
+    paths.push(path);
+    if (path === `users/${automaticContext.triggeringActor}`)
+      return structuredClone(p.triggering_operator);
+    if (path.endsWith(`/commits/${automaticContext.sha}`)) return structuredClone(p.source_commit);
+    if (path.endsWith('/commits/main')) return structuredClone(p.current_main);
+    if (path.includes('/actions/workflows/public-ci.yml/runs?')) return structuredClone(p);
+    if (/\/attempts\/\d+\/jobs\?per_page=100$/.test(path))
+      return structuredClone(p.qualification_jobs);
+    const selected = p.workflow_runs.find((item) => path.endsWith(`/actions/runs/${item.id}`));
+    if (selected) return structuredClone(selected);
+    assert.fail(path);
+  };
+}
+
+test('automatic release event binds the actual publisher SHA to exact signed-source qualification', () => {
+  const bound = boundContext();
+  assert.deepEqual(bound.sourceRun, {
+    id: 1,
+    run_attempt: 1,
+    workflow_id: 100,
+    head_sha: context.sha,
+  });
+  assert.equal(verifyReleaseCi(automaticPayload(), bound), 1);
+  for (const workflow of ['publish-npm.yml', 'publish-python.yml']) {
+    const publisher = {
+      ...bound,
+      workflowRef: `${bound.repository}/.github/workflows/${workflow}@refs/heads/main`,
+    };
+    assertReleaseContext(publisher);
+    assertReleaseCheckout(publisher, context.sha);
+    assert.throws(() => assertReleaseCheckout(publisher, 'b'.repeat(40)));
+  }
+  assert.strictEqual(IDENTITY_LIMITS, RELEASE_CI_LIMITS);
+  assert.equal(typeof githubRead, 'function');
+});
+
+test('automatic event refuses PR, forks, wrong source, wrong workflow, actors and incomplete attempts', () => {
+  for (const mutate of [
+    (event) => {
+      event.action = 'requested';
+    },
+    (event) => {
+      event.workflow_run.event = 'pull_request';
+    },
+    (event) => {
+      event.workflow_run.event = 'pull_request_target';
+    },
+    (event) => {
+      event.workflow_run.event = 'workflow_dispatch';
+    },
+    (event) => {
+      event.workflow_run.status = 'in_progress';
+    },
+    (event) => {
+      event.workflow_run.conclusion = 'failure';
+    },
+    (event) => {
+      event.workflow_run.conclusion = 'skipped';
+    },
+    (event) => {
+      event.workflow_run.head_branch = 'feature';
+    },
+    (event) => {
+      event.workflow_run.head_sha = 'b'.repeat(40);
+    },
+    (event) => {
+      event.workflow_run.id = '1';
+    },
+    (event) => {
+      event.workflow_run.run_attempt = 0;
+    },
+    (event) => {
+      event.workflow_run.workflow_id = 0;
+    },
+    (event) => {
+      event.workflow_run.name = 'Other CI';
+    },
+    (event) => {
+      event.workflow_run.path = '.github/workflows/publish-npm.yml';
+    },
+    (event) => {
+      event.workflow_run.url = 'https://api.github.com/repos/foreign/AgentDomain/actions/runs/1';
+    },
+    (event) => {
+      event.workflow_run.actor.id = 42;
+    },
+    (event) => {
+      event.workflow_run.actor.type = 'Bot';
+    },
+    (event) => {
+      event.workflow_run.triggering_actor.id = 42;
+    },
+    (event) => {
+      event.workflow_run.triggering_actor.login = 'Talvono';
+    },
+    (event) => {
+      event.workflow_run.triggering_actor.type = 'Bot';
+    },
+    (event) => {
+      event.repository.id = 42;
+    },
+    (event) => {
+      event.repository.owner.id = 42;
+    },
+    (event) => {
+      event.workflow_run.repository.id = 42;
+    },
+    (event) => {
+      event.workflow_run.repository.owner.id = 42;
+    },
+    (event) => {
+      event.workflow_run.head_repository = null;
+    },
+    (event) => {
+      event.workflow_run.head_repository.id = 42;
+    },
+    (event) => {
+      event.workflow_run.head_repository.full_name = 'foreign/AgentDomain';
+    },
+    (event) => {
+      event.workflow_run.head_repository.owner.login = '0xmdrakib';
+    },
+    (event) => {
+      event.workflow_run.head_repository.owner.id = 113634586;
+    },
+  ]) {
+    const event = automaticEvent();
+    mutate(event);
+    assert.throws(() => assertAutomaticReleaseEvent(automaticContext, event));
+  }
+  for (const patch of [
+    { sha: 'b'.repeat(40) },
+    { actorId: '42' },
+    { triggeringActor: 'someone' },
+    { repositoryId: '42' },
+    { ownerId: '113634586' },
+    { workflowRef: automaticContext.workflowRef.replace('main', 'feature') },
+    { ref: 'refs/tags/npm-v0.11.1' },
+    { eventName: 'workflow_dispatch' },
+    { eventName: 'push' },
+    { qualificationWorkflow: 'complete-public-release.yml' },
+  ])
+    assert.throws(() =>
+      assertAutomaticReleaseEvent({ ...automaticContext, ...patch }, automaticEvent()),
+    );
+  assert.throws(() =>
+    assertAutomaticReleaseEvent({ ...context, eventName: 'workflow_run' }, automaticEvent()),
+  );
+});
+
+test('automatic qualification cannot substitute another run, workflow, attempt or newer partial green', () => {
+  const bound = boundContext();
+  for (const patch of [
+    { id: 2, url: automaticRun.url.replace('/1', '/2') },
+    { run_attempt: 2 },
+    { workflow_id: 101 },
+    { name: 'Other CI' },
+    { event: 'workflow_dispatch' },
+  ])
+    assert.throws(() => verifyReleaseCi(automaticPayload([{ ...automaticRun, ...patch }]), bound));
+  const newer = automaticPayload([
+    automaticRun,
+    { ...automaticRun, id: 2, url: automaticRun.url.replace('/1', '/2') },
+  ]);
+  newer.qualification_jobs.jobs[0].steps[0].conclusion = 'skipped';
+  assert.throws(() => verifyReleaseCi(newer, bound), /RELEASE_CI_SUCCESS_REQUIRED/);
+  const newestRun = newer.workflow_runs[1];
+  const newestEvent = automaticEvent();
+  newestEvent.workflow_run = newestRun;
+  const newestBound = {
+    ...automaticContext,
+    sourceRun: assertAutomaticReleaseEvent(automaticContext, newestEvent),
+  };
+  const partial = automaticPayload([newestRun, automaticRun]);
+  partial.qualification_jobs.jobs[0].steps[0].conclusion = 'skipped';
+  assert.throws(
+    () => verifyReleaseCi(partial, newestBound),
+    /RELEASE_CI_FULL_QUALIFICATION_REQUIRED/,
+  );
+  for (const mutate of [
+    (p) => {
+      p.current_main.sha = 'b'.repeat(40);
+    },
+    (p) => {
+      p.source_commit.commit.verification.verified = false;
+    },
+    (p) => {
+      p.source_commit.sha = 'b'.repeat(40);
+    },
+    (p) => {
+      p.qualification_jobs.jobs[0].steps[0].conclusion = 'skipped';
+    },
+    (p) => {
+      p.qualification_jobs.jobs[0].run_attempt = 2;
+    },
+    (p) => {
+      p.triggering_operator.type = 'Bot';
+    },
+  ]) {
+    const p = automaticPayload();
+    mutate(p);
+    assert.throws(() => verifyReleaseCi(p, bound));
+  }
+  assert.throws(() => verifyReleaseCi(automaticPayload(), { ...bound, sourceRun: undefined }));
+  assert.throws(() => verifyReleaseCi(automaticPayload(), { ...bound, eventName: undefined }));
+});
+
+test('automatic exact-trigger qualification keeps nine bounded reads and rejects all observed drift', async () => {
+  const bound = boundContext();
+  const paths = [];
+  assert.equal(await qualifyReleaseCi(bound, fixtureRequest(automaticPayload(), paths)), 1);
+  assert.equal(paths.length, 9);
+  for (const drift of ['attempt', 'workflow', 'name', 'actor', 'repository', 'latest', 'main']) {
+    let reads = 0;
+    const request = fixtureRequest(automaticPayload(), []);
+    await assert.rejects(() =>
+      qualifyReleaseCi(bound, async (path) => {
+        const result = await request(path);
+        reads++;
+        if (reads === 7) {
+          if (drift === 'attempt') result.run_attempt = 2;
+          if (drift === 'workflow') result.workflow_id = 101;
+          if (drift === 'name') result.name = 'Other CI';
+          if (drift === 'actor') result.actor.type = 'Bot';
+          if (drift === 'repository') result.head_repository.owner.id = 42;
+        }
+        if (drift === 'latest' && reads === 8) {
+          result.workflow_runs.push({ ...automaticRun, id: 2, status: 'queued', conclusion: null });
+          result.total_count++;
+        }
+        if (drift === 'main' && reads === 9) result.sha = 'b'.repeat(40);
+        return result;
+      }),
+    );
+  }
+});
+
+test('releaseContext reads bounded event files without git or overriding ambient publisher variables', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'agentdomain-release-event-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const eventPath = join(directory, 'event.json');
+  const environment = {
+    ...automaticEnvironment(eventPath),
+    GITHUB_WORKSPACE: join(directory, 'no-checkout'),
+  };
+  const original = structuredClone(environment);
+  const json = JSON.stringify(automaticEvent());
+  await writeFile(eventPath, json.padEnd(RELEASE_CI_LIMITS.maxBytes, ' '));
+  const bound = releaseContext(environment);
+  assert.deepEqual(bound.sourceRun, boundContext().sourceRun);
+  assert.deepEqual(environment, original);
+  assert.equal(bound.sha, environment.GITHUB_SHA);
+  assert.ok(Object.isFrozen(bound));
+  assert.ok(Object.isFrozen(bound.sourceRun));
+  for (const body of [
+    '',
+    '{',
+    'private-body-marker',
+    json.padEnd(RELEASE_CI_LIMITS.maxBytes + 1, ' '),
+  ]) {
+    await writeFile(eventPath, body);
+    assert.throws(() => releaseContext(environment), /^Error: RELEASE_CONTEXT_INVALID$/);
+  }
+  assert.throws(() => releaseContext({ ...environment, GITHUB_EVENT_PATH: directory }));
+  assert.throws(() =>
+    releaseContext({ ...environment, GITHUB_EVENT_PATH: join(directory, 'missing') }),
+  );
+  await writeFile(eventPath, json);
+  for (const eventName of [
+    'workflow_dispatch',
+    'push',
+    'pull_request',
+    'pull_request_target',
+    'issue_comment',
+    undefined,
+  ])
+    assert.throws(() => releaseContext({ ...environment, GITHUB_EVENT_NAME: eventName }));
+  assert.throws(() => releaseContext({ ...environment, GITHUB_SHA: 'b'.repeat(40) }));
+  assert.throws(() =>
+    releaseContext({
+      ...environment,
+      GITHUB_WORKFLOW_REF: automaticContext.workflowRef.replace('main', 'feature'),
+    }),
+  );
+  assert.doesNotThrow(() =>
+    releaseContext({ ...environment, GITHUB_EVENT_NAME: undefined, GITHUB_ACTIONS: undefined }),
+  );
+});
+
+test('releaseContext rejects symlinked event files', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'agentdomain-release-event-link-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const target = join(directory, 'event.json');
+  const link = join(directory, 'link.json');
+  await writeFile(target, JSON.stringify(automaticEvent()));
+  try {
+    await symlink(target, link, 'file');
+  } catch (error) {
+    if (!['EPERM', 'EACCES', 'ENOTSUP'].includes(error.code)) throw error;
+    t.skip('Host does not permit file symlinks.');
+    return;
+  }
+  assert.throws(() => releaseContext(automaticEnvironment(link)));
+});
+
+test('automatic CLI qualifies checkout-free sealed use and rejects manual publisher events', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'agentdomain-automatic-cli-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const eventPath = join(directory, 'event.json');
+  const output = join(directory, 'output');
+  await writeFile(eventPath, JSON.stringify(automaticEvent()));
+  const filename = fileURLToPath(new URL('./verify-release-ci.mjs', import.meta.url));
+  const environment = fixtureEnvironment({
+    ...automaticEnvironment(eventPath),
+    GITHUB_WORKSPACE: join(directory, 'checkout-does-not-exist'),
+    GITHUB_OUTPUT: output,
+  });
+  const result = spawnSync(process.execPath, [filename], {
+    env: environment,
+    input: JSON.stringify(automaticPayload()),
+    encoding: 'utf8',
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(
+    await readFile(output, 'utf8'),
+    `publication-authorized=${RELEASE_POLICY.activeOwner === 'Talvono'}\n`,
+  );
+  for (const eventName of ['workflow_dispatch', 'push', 'pull_request', undefined]) {
+    const rejectedOutput = `${output}-${eventName ?? 'missing'}`;
+    const rejected = spawnSync(process.execPath, [filename], {
+      env: { ...environment, GITHUB_EVENT_NAME: eventName, GITHUB_OUTPUT: rejectedOutput },
+      input: JSON.stringify(automaticPayload()),
+      encoding: 'utf8',
+    });
+    assert.equal(rejected.status, 1);
+    assert.equal(rejected.stdout, '');
+    await assert.rejects(readFile(rejectedOutput), { code: 'ENOENT' });
+  }
+});
+
+test('CLI fixtures isolate ambient CI identity while real Actions events cannot fall back', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'agentdomain-ambient-ci-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const eventPath = join(directory, 'allowed-event.json');
+  const hostilePath = join(directory, 'fork-event.json');
+  const ambientOutput = join(directory, 'ambient-output');
+  const output = join(directory, 'fixture-output');
+  const fork = automaticEvent();
+  fork.workflow_run.head_repository = {
+    ...automaticRepository,
+    full_name: 'foreign/AgentDomain',
+    id: 42,
+    owner: { login: 'foreign', id: 42 },
+  };
+  await writeFile(eventPath, JSON.stringify(automaticEvent()));
+  await writeFile(hostilePath, JSON.stringify(fork));
+  const ambient = {
+    ...fixtureEnvironment(),
+    CI: 'true',
+    GITHUB_ACTIONS: 'true',
+    GITHUB_EVENT_NAME: 'pull_request',
+    GITHUB_EVENT_PATH: hostilePath,
+    GITHUB_REPOSITORY: 'foreign/AgentDomain',
+    GITHUB_REPOSITORY_ID: '42',
+    GITHUB_REPOSITORY_OWNER: 'foreign',
+    GITHUB_REPOSITORY_OWNER_ID: '42',
+    GITHUB_ACTOR: 'foreign',
+    GITHUB_ACTOR_ID: '42',
+    GITHUB_TRIGGERING_ACTOR: 'foreign',
+    GITHUB_WORKFLOW_REF: 'foreign/AgentDomain/.github/workflows/publish-npm.yml@refs/pull/84/merge',
+    GITHUB_REF: 'refs/pull/84/merge',
+    GITHUB_SHA: 'b'.repeat(40),
+    GITHUB_OUTPUT: ambientOutput,
+    GH_TOKEN: 'ambient-credential-must-not-pass',
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'ambient-oidc-must-not-pass',
+    NODE_OPTIONS: '--ambient-node-option-must-not-pass',
+  };
+  const original = structuredClone(ambient);
+  const environment = fixtureEnvironment(
+    {
+      ...automaticEnvironment(eventPath),
+      GITHUB_OUTPUT: output,
+    },
+    ambient,
+  );
+  for (const key of ['CI', 'GH_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'NODE_OPTIONS'])
+    assert.equal(environment[key], undefined);
+  assert.equal(environment.GITHUB_EVENT_NAME, 'workflow_run');
+  assert.equal(environment.GITHUB_SHA, automaticContext.sha);
+  assert.equal(environment.GITHUB_OUTPUT, output);
+  assert.deepEqual(ambient, original);
+  assert.throws(() => releaseContext(ambient));
+  assert.doesNotThrow(() => releaseContext(environment));
+
+  const filename = fileURLToPath(new URL('./verify-release-ci.mjs', import.meta.url));
+  const input = JSON.stringify(automaticPayload());
+  const accepted = spawnSync(process.execPath, [filename], {
+    env: environment,
+    input,
+    encoding: 'utf8',
+  });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.equal(
+    await readFile(output, 'utf8'),
+    `publication-authorized=${RELEASE_POLICY.activeOwner === 'Talvono'}\n`,
+  );
+  await assert.rejects(readFile(ambientOutput), { code: 'ENOENT' });
+
+  for (const [index, patch] of [
+    { GITHUB_EVENT_NAME: 'pull_request' },
+    { GITHUB_EVENT_NAME: 'workflow_dispatch' },
+    { GITHUB_EVENT_NAME: undefined },
+    { GITHUB_EVENT_PATH: hostilePath },
+    { GITHUB_EVENT_PATH: undefined },
+    { GITHUB_SHA: 'b'.repeat(40) },
+  ].entries()) {
+    const rejectedOutput = join(directory, `rejected-${index}`);
+    const actions = { ...environment, ...patch, GITHUB_OUTPUT: rejectedOutput };
+    assert.equal(actions.GITHUB_ACTIONS, 'true');
+    assert.throws(() => releaseContext(actions));
+    const rejected = spawnSync(process.execPath, [filename], {
+      env: actions,
+      input,
+      encoding: 'utf8',
+    });
+    assert.equal(rejected.status, 1);
+    assert.equal(rejected.stdout, '');
+    await assert.rejects(readFile(rejectedOutput), { code: 'ENOENT' });
+  }
+});
+
+test('finalizer source context requires explicit exact Public CI binding without authorizing a publisher', async () => {
+  const environment = {
+    ...automaticEnvironment('intentionally-not-read'),
+    GITHUB_WORKFLOW_REF:
+      'Talvono/AgentDomain/.github/workflows/complete-public-release.yml@refs/heads/main',
+  };
+  const bound = releaseSourceContext(environment, {
+    workflow: 'complete-public-release.yml',
+    sourceRun: automaticRun,
+  });
+  assert.deepEqual(bound.sourceRun, boundContext().sourceRun);
+  const paths = [];
+  assert.equal(await qualifyReleaseCi(bound, fixtureRequest(automaticPayload(), paths)), 1);
+  assert.equal(paths.length, 9);
+  assert.throws(() => assertReleaseContext(bound, true));
+  assert.throws(() => assertReleaseContext(bound, true, 'publish-npm.yml'));
+  assert.throws(() => assertAutomaticReleaseEvent(bound, automaticEvent()));
+  for (const options of [
+    undefined,
+    { workflow: 'publish-npm.yml', sourceRun: automaticRun },
+    { workflow: 'other.yml', sourceRun: automaticRun },
+    { workflow: 'complete-public-release.yml', sourceRun: bound.sourceRun },
+    {
+      workflow: 'complete-public-release.yml',
+      sourceRun: { ...automaticRun, head_sha: 'b'.repeat(40) },
+    },
+    {
+      workflow: 'complete-public-release.yml',
+      sourceRun: { ...automaticRun, event: 'pull_request' },
+    },
+  ])
+    assert.throws(() => releaseSourceContext(environment, options));
+  assert.throws(() =>
+    releaseSourceContext(
+      { ...environment, GITHUB_EVENT_NAME: 'workflow_dispatch' },
+      {
+        workflow: 'complete-public-release.yml',
+        sourceRun: automaticRun,
+      },
+    ),
+  );
 });
 
 test('requires successful Public CI for the exact public main commit', () => {
@@ -267,11 +824,13 @@ test('qualification accepts only both exact owner identities, not publication al
     ),
     1,
   );
-  assertReleaseContext(context, true);
-  assert.throws(() => assertReleaseContext(future, true));
+  for (const candidate of [context, future]) {
+    if (candidate.owner === RELEASE_POLICY.activeOwner) assertReleaseContext(candidate, true);
+    else assert.throws(() => assertReleaseContext(candidate, true));
+  }
   assert.throws(() => assertReleaseContext({ ...future, ownerId: '113634586' }));
   assert.throws(() => assertReleaseContext({ ...future, actor: 'Talvono', actorId: '342912183' }));
-  assert.equal(RELEASE_POLICY.activeOwner, '0xmdrakib');
+  assert.ok(['0xmdrakib', 'Talvono'].includes(RELEASE_POLICY.activeOwner));
 });
 
 test('signature, source SHA and triggering human numeric identity must qualify', () => {
@@ -285,16 +844,17 @@ test('signature, source SHA and triggering human numeric identity must qualify',
     assert.throws(() => verifyReleaseCi({ ...payload(), ...patch }, context));
 });
 
-test('only a trusted source-policy flip activates Talvono and excludes the former owner', async (t) => {
+test('only a trusted source-policy change switches publication authority', async (t) => {
   const directory = await mkdtemp(join(tmpdir(), 'agentdomain-policy-test-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   await copyFile(
     new URL('./public-release-identity.mjs', import.meta.url),
     join(directory, 'public-release-identity.mjs'),
   );
+  const nextOwner = RELEASE_POLICY.activeOwner === 'Talvono' ? '0xmdrakib' : 'Talvono';
   await writeFile(
     join(directory, 'public-release-policy.json'),
-    JSON.stringify({ ...RELEASE_POLICY, activeOwner: 'Talvono' }),
+    JSON.stringify({ ...RELEASE_POLICY, activeOwner: nextOwner }),
   );
   const flipped = await import(pathToFileURL(join(directory, 'public-release-identity.mjs')).href);
   const future = {
@@ -304,15 +864,21 @@ test('only a trusted source-policy flip activates Talvono and excludes the forme
     ownerId: '342912183',
     workflowRef: 'Talvono/AgentDomain/.github/workflows/publish-npm.yml@refs/heads/main',
   };
-  flipped.assertReleaseContext(future, true);
-  assert.throws(() => flipped.assertReleaseContext(context, true));
-  assert.throws(() => assertReleaseContext(future, true));
+  const next = nextOwner === 'Talvono' ? future : context;
+  const previous = nextOwner === 'Talvono' ? context : future;
+  flipped.assertReleaseContext(next, true);
+  assert.throws(() => flipped.assertReleaseContext(previous, true));
+  assert.throws(() => assertReleaseContext(next, true));
 });
 
 test('CLI rejects malformed and oversized bodies without logging their contents', () => {
   const filename = fileURLToPath(new URL('./verify-release-ci.mjs', import.meta.url));
   for (const input of ['private-body-marker', 'x'.repeat(RELEASE_CI_LIMITS.maxBytes + 1)]) {
-    const result = spawnSync(process.execPath, [filename], { input, encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [filename], {
+      env: fixtureEnvironment(),
+      input,
+      encoding: 'utf8',
+    });
     assert.equal(result.status, 1);
     assert.doesNotMatch(result.stderr, /private-body-marker|xxxxxxxx/);
     assert.equal(result.stdout, '');
@@ -332,8 +898,7 @@ test('CLI emits publication authority only after exact-source qualification', as
       owner: { login: owner, id: Number(ownerId) },
     };
     const output = join(directory, owner);
-    const environment = {
-      ...process.env,
+    const environment = fixtureEnvironment({
       GITHUB_REPOSITORY: repository,
       GITHUB_REPOSITORY_ID: '1310051881',
       GITHUB_REPOSITORY_OWNER: owner,
@@ -347,7 +912,7 @@ test('CLI emits publication authority only after exact-source qualification', as
       GITHUB_OUTPUT: output,
       ACTIVE_RELEASE_OWNER: 'Talvono',
       PUBLICATION_AUTHORIZED: 'true',
-    };
+    });
     const result = spawnSync(process.execPath, [filename], {
       env: environment,
       input: JSON.stringify(
@@ -365,7 +930,7 @@ test('CLI emits publication authority only after exact-source qualification', as
     assert.equal(result.status, 0, result.stderr);
     assert.equal(
       await readFile(output, 'utf8'),
-      `publication-authorized=${owner === '0xmdrakib'}\n`,
+      `publication-authorized=${owner === RELEASE_POLICY.activeOwner}\n`,
     );
     const rejectedOutput = `${output}-rejected`;
     const rejected = spawnSync(process.execPath, [filename], {
@@ -610,37 +1175,57 @@ test('release OIDC remains isolated to pinned identity and active-policy qualifi
     ['publish-python.yml', 'pypi-production'],
   ]) {
     const workflow = workflows[file];
-    assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
+    assert.deepEqual(workflow.on, {
+      workflow_run: { workflows: ['Public CI'], types: ['completed'], branches: ['main'] },
+    });
     assert.deepEqual(workflow.permissions, { contents: 'read' });
+    assert.deepEqual(workflow.jobs.plan.permissions, { contents: 'read', actions: 'read' });
+    assert.equal(workflow.jobs.plan.environment, undefined);
+    assert.equal(workflow.jobs.validate.needs, 'plan');
     assert.deepEqual(workflow.jobs.validate.permissions, { contents: 'read', actions: 'read' });
     assert.equal(workflow.jobs.validate.environment, undefined);
     const publish = workflow.jobs.publish;
-    assert.equal(publish.needs, 'validate');
+    assert.deepEqual(publish.needs, ['plan', 'validate']);
+    const registry = file === 'publish-npm.yml' ? 'npm' : 'Python';
+    assert.equal(
+      publish.name,
+      `Publish ${registry} \${{ needs.plan.outputs.version }} (Public CI \${{ github.event.workflow_run.id }}/\${{ github.event.workflow_run.run_attempt }})`,
+    );
     const github = {
       ref: 'refs/heads/main',
       repository_id: '1310051881',
-      repository: '0xmdrakib/AgentDomain',
-      repository_owner_id: '113634586',
+      repository: 'Talvono/AgentDomain',
+      repository_owner_id: '342912183',
       actor: '0xmdrakib',
       actor_id: '113634586',
       triggering_actor: '0xmdrakib',
+      sha: automaticContext.sha,
+      event_name: 'workflow_run',
+      event: {
+        action: 'completed',
+        repository: structuredClone(automaticRepository),
+        workflow_run: {
+          ...automaticRun,
+          actor: structuredClone(automaticRun.actor),
+          triggering_actor: structuredClone(automaticRun.triggering_actor),
+          repository: structuredClone(automaticRepository),
+          head_repository: structuredClone(automaticRepository),
+        },
+      },
     };
-    const evaluate = (job, source, authorized = 'true') =>
+    const evaluate = (job, source, authorized = 'true', needed = 'true') =>
       Function(
         'github',
         'needs',
-        `return (${job.if.replaceAll('outputs.publication-authorized', "outputs['publication-authorized']")})`,
-      )(source, { validate: { outputs: { 'publication-authorized': authorized } } });
-    for (const job of [workflow.jobs.validate, publish]) {
+        `return (${job.if
+          .replaceAll('outputs.publication-authorized', "outputs['publication-authorized']")
+          .replaceAll('outputs.release-needed', "outputs['release-needed']")})`,
+      )(source, {
+        plan: { outputs: { 'release-needed': needed } },
+        validate: { outputs: { 'publication-authorized': authorized } },
+      });
+    for (const job of [workflow.jobs.plan, workflow.jobs.validate, publish]) {
       assert.equal(evaluate(job, github), true);
-      assert.equal(
-        evaluate(job, {
-          ...github,
-          repository: 'Talvono/AgentDomain',
-          repository_owner_id: '342912183',
-        }),
-        true,
-      );
       for (const patch of [
         { ref: 'refs/heads/feature' },
         { repository_id: '42' },
@@ -649,10 +1234,96 @@ test('release OIDC remains isolated to pinned identity and active-policy qualifi
         { actor_id: '42' },
         { actor: 'Talvono' },
         { triggering_actor: 'someone' },
-        { repository: 'Talvono/AgentDomain' },
+        { repository: '0xmdrakib/AgentDomain', repository_owner_id: '113634586' },
+        { sha: 'b'.repeat(40) },
+        { event_name: 'workflow_dispatch' },
+        { event_name: 'pull_request' },
       ])
         assert.equal(evaluate(job, { ...github, ...patch }), false);
+      for (const mutate of [
+        (source) => {
+          source.event.action = 'requested';
+        },
+        (source) => {
+          source.event.repository.id = 42;
+        },
+        (source) => {
+          source.event.repository.owner.id = 42;
+        },
+        (source) => {
+          source.event.repository.full_name = 'foreign/AgentDomain';
+        },
+        (source) => {
+          source.event.workflow_run.head_branch = 'feature';
+        },
+        (source) => {
+          source.event.workflow_run.head_sha = 'b'.repeat(40);
+        },
+        (source) => {
+          source.event.workflow_run.status = 'in_progress';
+        },
+        (source) => {
+          source.event.workflow_run.conclusion = 'failure';
+        },
+        (source) => {
+          source.event.workflow_run.event = 'pull_request';
+        },
+        (source) => {
+          source.event.workflow_run.event = 'workflow_dispatch';
+        },
+        (source) => {
+          source.event.workflow_run.name = 'Other CI';
+        },
+        (source) => {
+          source.event.workflow_run.path = '.github/workflows/other.yml';
+        },
+        (source) => {
+          source.event.workflow_run.id = 0;
+        },
+        (source) => {
+          source.event.workflow_run.run_attempt = 0;
+        },
+        (source) => {
+          source.event.workflow_run.workflow_id = 0;
+        },
+        (source) => {
+          source.event.workflow_run.repository.id = 42;
+        },
+        (source) => {
+          source.event.workflow_run.repository.owner.id = 42;
+        },
+        (source) => {
+          source.event.workflow_run.repository.full_name = 'foreign/AgentDomain';
+        },
+        (source) => {
+          source.event.workflow_run.head_repository.id = 42;
+        },
+        (source) => {
+          source.event.workflow_run.head_repository.owner.id = 42;
+        },
+        (source) => {
+          source.event.workflow_run.head_repository.full_name = 'foreign/AgentDomain';
+        },
+        (source) => {
+          source.event.workflow_run.actor.id = 42;
+        },
+        (source) => {
+          source.event.workflow_run.actor.type = 'Bot';
+        },
+        (source) => {
+          source.event.workflow_run.triggering_actor.id = 42;
+        },
+        (source) => {
+          source.event.workflow_run.triggering_actor.type = 'Bot';
+        },
+      ]) {
+        const source = structuredClone(github);
+        mutate(source);
+        assert.equal(evaluate(job, source), false, `${file}: ${job.name ?? 'validate'} ${mutate}`);
+      }
+      assert.equal(job['continue-on-error'], undefined);
     }
+    assert.equal(evaluate(workflow.jobs.validate, github, 'true', 'false'), false);
     assert.equal(evaluate(publish, github, 'false'), false);
     assert.equal(
       workflow.jobs.validate.outputs['publication-authorized'],
@@ -664,8 +1335,98 @@ test('release OIDC remains isolated to pinned identity and active-policy qualifi
     assert.match(qualification.run, /node scripts\/verify-release-ci\.mjs --github/);
     assert.deepEqual(qualification.env, { GH_TOKEN: '${{ github.token }}' });
     assert.deepEqual(publish.environment, { name: environment });
-    assert.deepEqual(publish.permissions, { contents: 'read', 'id-token': 'write' });
+    assert.deepEqual(publish.permissions, {
+      contents: 'read',
+      actions: 'read',
+      'id-token': 'write',
+    });
   }
+});
+
+test('publisher workflows consume sealed same-run inputs and requalify immediately before OIDC mutation', () => {
+  for (const file of ['publish-npm.yml', 'publish-python.yml']) {
+    const workflow = workflows[file];
+    for (const job of [workflow.jobs.plan, workflow.jobs.validate]) {
+      const checkout = job.steps.filter((step) => step.uses?.startsWith('actions/checkout@'));
+      assert.equal(checkout.length, 1);
+      assert.equal(checkout[0].with.ref, '${{ github.event.workflow_run.head_sha }}');
+      assert.equal(checkout[0].with['persist-credentials'], 'false');
+    }
+    const publish = workflow.jobs.publish;
+    assert.ok(publish.steps.every((step) => !step.uses?.startsWith('actions/checkout@')));
+    const downloads = publish.steps.filter((step) =>
+      step.uses?.startsWith('actions/download-artifact@'),
+    );
+    assert.equal(downloads.length, 1);
+    assert.deepEqual(Object.keys(downloads[0].with).sort(), ['name', 'path']);
+    assert.match(downloads[0].with.name, /\$\{\{ github\.sha \}\}$/);
+    const fresh = publish.steps.at(-2);
+    assert.equal(fresh.name, 'Requalify the exact source immediately before publication');
+    assert.deepEqual(fresh.env, { GH_TOKEN: '${{ github.token }}' });
+    assert.match(fresh.run, /node .*(?:verify-release-ci|qualification)\.mjs"? --github$/);
+    const commands = Object.values(workflow.jobs)
+      .flatMap((job) => job.steps.flatMap((step) => (step.run ? [step.run] : [])))
+      .join('\n');
+    assert.doesNotMatch(
+      commands,
+      /inputs\.|github\.event\.inputs|GITHUB_(?:SHA|REF|REPOSITORY)\s*=/,
+    );
+    for (const job of Object.values(workflow.jobs)) {
+      assert.equal(job.env?.GITHUB_SHA, undefined);
+      for (const step of job.steps) assert.equal(step.env?.GITHUB_SHA, undefined);
+    }
+  }
+
+  const npm = workflows['publish-npm.yml'];
+  const pack = npm.jobs.validate.steps.find((step) => step.id === 'pack-release').run;
+  assert.match(
+    pack,
+    /for script in npm-release\.mjs release-artifacts\.py public-release-identity\.mjs public-release-policy\.json verify-release-ci\.mjs; do/,
+  );
+  assert.match(pack, /test "\$\(wc -l < "\$checksums"\)" -eq 13/);
+  const verified = npm.jobs.publish.steps.find(
+    (step) => step.name === 'Verify staged release inputs',
+  ).run;
+  assert.match(verified, /test "\$\(wc -l < "\$release_dir\/release\.sha256"\)" -eq 13/);
+  assert.ok(
+    verified.indexOf('sha256sum --check --strict release.sha256') <
+      verified.indexOf('tooling/release-artifacts.py'),
+  );
+  assert.match(
+    npm.jobs.publish.steps.at(-1).run,
+    /npm-release\.mjs" "\$release_dir" "\$npm_cli" oidc/,
+  );
+
+  const python = workflows['publish-python.yml'];
+  const build = python.jobs.validate.steps.find((step) => step.id === 'build').run;
+  const stage = python.jobs.publish.steps.find((step) => step.id === 'stage');
+  for (const [output, filename] of [
+    ['verifier', 'verifier.py'],
+    ['policy', 'public-release-policy.json'],
+    ['qualification', 'qualification.mjs'],
+    ['identity', 'public-release-identity.mjs'],
+  ]) {
+    assert.equal(
+      python.jobs.validate.outputs[`${output}-sha256`],
+      `\${{ steps.build.outputs.${output}-sha256 }}`,
+    );
+    assert.ok(build.includes(`$RUNNER_TEMP/python-release/${filename}`));
+    assert.equal(
+      stage.env[`EXPECTED_${output.toUpperCase()}_SHA256`],
+      `\${{ needs.validate.outputs.${output}-sha256 }}`,
+    );
+    const sealCheck = stage.run.indexOf(`release-inputs/${filename}\\n'`);
+    assert.ok(
+      sealCheck >= 0 && sealCheck < stage.run.indexOf('python -B release-inputs/verifier.py'),
+    );
+  }
+  assert.equal(
+    stage.env.EXPECTED_RELEASE_MANIFEST_SHA256,
+    '${{ needs.validate.outputs.release-manifest-sha256 }}',
+  );
+  assert.match(stage.run, /stage-python --output release-inputs --project all$/m);
+  assert.equal(python.jobs.publish.steps.at(-1).if, "steps.stage.outputs.publish-needed == 'true'");
+  assert.equal(python.jobs.publish.steps.at(-1).with['skip-existing'], 'false');
 });
 
 test('public CrewAI install uses a pinned verified tool and fresh hash-checked wheels', async () => {
@@ -723,7 +1484,7 @@ test('public CrewAI install uses a pinned verified tool and fresh hash-checked w
   for (const command of [
     'python -m venv "$RUNNER_TEMP/agentdomain-crewai"',
     'uv --no-config --no-cache --no-python-downloads pip install --python "$RUNNER_TEMP/agentdomain-crewai/bin/python" --require-hashes --no-build -r packages/mcp-server/examples/crewai/requirements.lock',
-    '-m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_crewai-0.11.0-py3-none-any.whl"',
+    '-m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_crewai-$RELEASE_VERSION-py3-none-any.whl"',
     '-m pip check',
     'importlib.util.find_spec("agentdomain_crewai")',
     'packages/mcp-server/test/crewai-package.py',

@@ -1,6 +1,6 @@
 {
   "name": "@agentdomain/sdk",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "TypeScript SDK for AgentDomain agent-native identity and communications APIs, renewals, and x402 workflows",
   "keywords": [
     "agentdomain",
@@ -15,12 +15,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/0xmdrakib/AgentDomain.git",
+    "url": "git+https://github.com/Talvono/AgentDomain.git",
     "directory": "packages/sdk"
   },
   "homepage": "https://docs.agentdomain.app/sdk/typescript",
   "bugs": {
-    "url": "https://github.com/0xmdrakib/AgentDomain/issues"
+    "url": "https://github.com/Talvono/AgentDomain/issues"
   },
   "type": "module",
   "sideEffects": false,

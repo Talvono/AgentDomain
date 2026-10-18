@@ -13,13 +13,26 @@ function markdownLinkTarget(source, label) {
   return links[0][2];
 }
 
-test('the release catalog records all eight published packages with exact registry links', async () => {
+test('the source catalog records all eight workspace packages without claiming registry publication', async () => {
   const readme = await readFile(new URL('../../../README.md', import.meta.url), 'utf8');
-  const rows = readme.split('\n').filter((line) => /^\| \[/.test(line));
-  assert.equal(rows.filter((line) => /\| Published 0\.11\.0\s*\|/.test(line)).length, 8);
-  assert.equal(rows.filter((line) => /\| Source candidate 0\.11\.0\s*\|/.test(line)).length, 0);
-  assert.match(readme, /\*\*All eight packages are published at 0\.11\.0\*\*/);
-  assert.doesNotMatch(readme, /unpublished|source candidate/i);
+  const { version } = JSON.parse(
+    await readFile(new URL('../../../packages/shared/package.json', import.meta.url), 'utf8'),
+  );
+  const catalog = readme
+    .replaceAll('\r\n', '\n')
+    .split('## Public packages\n')[1]
+    ?.split('\n## ')[0];
+  assert.equal(typeof catalog, 'string');
+  const rows = catalog.split('\n').filter((line) => /^\| \[/.test(line));
+  assert.equal(rows.length, 8);
+  assert.ok(catalog.includes(`The coordinated source version is **${version}**`));
+  assert.match(catalog, /source version alone is not publication evidence/);
+  assert.doesNotMatch(catalog, /All eight packages are published at|\|\s*Published\b/i);
+  assert.doesNotMatch(
+    catalog,
+    /Install the published SDK:/i,
+    'The source catalog must not imply that its workspace version is already published',
+  );
   for (const name of [
     'shared',
     'sdk',
@@ -34,27 +47,24 @@ test('the release catalog records all eight published packages with exact regist
       markdownLinkTarget(row, `\`@agentdomain/${name}\``),
       `https://www.npmjs.com/package/@agentdomain/${name}`,
     );
-    assert.match(row, /\| Published 0\.11\.0\s*\|/);
+    assert.match(row, /\| npm\s*\|/);
   }
   const crewai = rows.find((line) => line.startsWith('| [`agentdomain-crewai`]('));
   assert.ok(crewai, 'Missing CrewAI catalog entry');
   assert.equal(
     markdownLinkTarget(crewai, '`agentdomain-crewai`'),
-    'https://pypi.org/project/agentdomain-crewai/0.11.0/',
+    'https://pypi.org/project/agentdomain-crewai/',
   );
-  assert.match(crewai, /\| Published 0\.11\.0\s*\|/);
+  assert.match(crewai, /\| PyPI\s*\|/);
   const autogen = rows.find((line) => line.startsWith('| [`agentdomain-autogen`]('));
   assert.ok(autogen, 'Missing AutoGen catalog entry');
   assert.equal(
     markdownLinkTarget(autogen, '`agentdomain-autogen`'),
-    'https://pypi.org/project/agentdomain-autogen/0.11.0/',
+    'https://pypi.org/project/agentdomain-autogen/',
   );
-  assert.match(autogen, /\| Published 0\.11\.0\s*\|/);
-  assert.match(
-    readme,
-    /five earlier npm 0\.11\.0 releases have verified GitHub\s+Actions OIDC provenance/,
-  );
-  assert.match(readme, /LangChain's local publication has no OIDC provenance/);
+  assert.match(autogen, /\| PyPI\s*\|/);
+  assert.match(readme, /five npm 0\.11\.0 packages had verified GitHub Actions OIDC provenance/);
+  assert.match(readme, /LangChain 0\.11\.0 local publication did not/);
   assert.match(
     readme,
     /do not invent REST endpoints for onchain functions,\s+authorize actions, or prove npm publication/,
@@ -68,11 +78,18 @@ test('retired root records are absent and release evidence remains linked', asyn
     });
   }
   const readme = await readFile(new URL('../../../README.md', import.meta.url), 'utf8');
-  assert.equal(
-    new Set([...readme.matchAll(/\[release notes\]\(([^)]+)\)/g)].map(([, url]) => url)).size,
-    1,
+  const releaseNotes = new Set(
+    [...readme.matchAll(/\[release notes\]\(([^)]+)\)/g)].map(([, url]) => url),
   );
-  assert.ok(readme.includes('https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0'));
+  assert.ok(releaseNotes.has('https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0'));
+  for (const target of releaseNotes)
+    assert.ok(
+      [
+        'https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0',
+        'https://github.com/Talvono/AgentDomain/releases/latest',
+      ].includes(target),
+      `Unexpected release evidence link: ${target}`,
+    );
   assert.match(
     readme,
     /AgentDomain is the agent-native identity and communications infrastructure/,

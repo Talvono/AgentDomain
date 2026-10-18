@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import sysconfig
+import tomllib
 import tarfile
 import tempfile
 import unittest
@@ -22,7 +23,7 @@ import agentdomain_crewai
 from agentdomain_crewai import child_environment
 
 
-VERSION = "0.11.0"
+VERSION = tomllib.loads((Path(__file__).resolve().parents[2] / "crewai-plugin/pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 DIST_INFO = f"agentdomain_crewai-{VERSION}.dist-info"
 MODULE_FILES = {
     "agentdomain_crewai/__init__.py",

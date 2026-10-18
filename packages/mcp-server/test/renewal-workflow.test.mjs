@@ -106,17 +106,17 @@ function readOnly(f) {
   }
 }
 
+function assertServerVersion(manifest, advertised) {
+  assert.deepEqual(advertised, { name: 'agentdomain-mcp', version: manifest.version });
+}
+
 describe('read-only renewal MCP binding with real SDK over stdio', () => {
-  it('advertises 0.11.0, closed schemas, and both tools as default read-only without any fetch', async () => {
+  it('advertises the package version, closed schemas, and both tools as default read-only without any fetch', async () => {
     const f = await start();
     const manifest = JSON.parse(
       await readFile(new URL('../package.json', import.meta.url), 'utf8'),
     );
-    assert.equal(manifest.version, '0.11.0');
-    assert.deepEqual(f.client.getServerVersion(), {
-      name: 'agentdomain-mcp',
-      version: manifest.version,
-    });
+    assertServerVersion(manifest, f.client.getServerVersion());
     const listed = (await f.client.listTools()).tools;
     for (const name of tools) {
       const tool = listed.find((item) => item.name === name);
@@ -173,6 +173,14 @@ describe('read-only renewal MCP binding with real SDK over stdio', () => {
       assert.match(result.content[0].text, /Unknown or disabled tool/);
     }
     assert.deepEqual(f.fetches(), []);
+  });
+
+  it('accepts future metadata versions and rejects stale advertised versions', () => {
+    const manifest = { version: '0.12.0' };
+    assertServerVersion(manifest, { name: 'agentdomain-mcp', version: '0.12.0' });
+    assert.throws(() =>
+      assertServerVersion(manifest, { name: 'agentdomain-mcp', version: '0.11.0' }),
+    );
   });
 
   it('inspects identity and all canonical vault fields at the same EIP-1898 safe hash', async () => {

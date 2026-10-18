@@ -10,12 +10,14 @@ import io
 import json
 import sys
 import tarfile
+import tomllib
 import zipfile
 from email.parser import BytesParser
 from pathlib import Path, PurePosixPath
 
 ROOT = Path(__file__).resolve().parents[1]
-STEM = "agentdomain_autogen-0.11.0"
+VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
+STEM = f"agentdomain_autogen-{VERSION}"
 FRAMEWORK_DEPENDENCIES = {
     "autogen-agentchat==0.7.5",
     "autogen-core==0.7.5",
@@ -44,7 +46,7 @@ SOURCE_FILES = {
 def metadata(raw: bytes) -> None:
     parsed = BytesParser().parsebytes(raw)
     assert parsed["Name"] == "agentdomain-autogen"
-    assert parsed["Version"] == "0.11.0"
+    assert parsed["Version"] == VERSION
     assert parsed["Requires-Python"] == ">=3.10"
     assert parsed["License-Expression"] == "Apache-2.0"
     assert set(parsed.get_all("License-File")) == {"LICENSE", "NOTICE"}
@@ -122,7 +124,7 @@ def verify(directory: Path) -> dict:
         for name in SOURCE_FILES:
             assert files[name] == (ROOT / name).read_bytes(), name
     return {
-        "version": "0.11.0",
+        "version": VERSION,
         "wheelFiles": len(expected),
         "sdistFiles": len(files),
         "allowlist": "passed",

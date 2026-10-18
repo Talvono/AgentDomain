@@ -7,7 +7,7 @@ ElizaOS actions for AgentDomain's agent-native identity and communications infra
 Install the version used by these examples:
 
 ```bash
-npm install @agentdomain/eliza-plugin@0.11.0 @elizaos/core
+npm install @agentdomain/eliza-plugin@0.11.1 @elizaos/core
 ```
 
 ## Add the plugin
@@ -60,5 +60,5 @@ requests are not changed.
 
 - [ElizaOS guide](https://docs.agentdomain.app/frameworks/elizaos)
 - [API discovery](https://api.agentdomain.app/api/v1)
-- [Source](https://github.com/0xmdrakib/AgentDomain/tree/main/packages/eliza-plugin)
-- [Security policy](https://github.com/0xmdrakib/AgentDomain/security/policy)
+- [Source](https://github.com/Talvono/AgentDomain/tree/main/packages/eliza-plugin)
+- [Security policy](https://github.com/Talvono/AgentDomain/security/policy)

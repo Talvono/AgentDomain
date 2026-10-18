@@ -7,7 +7,7 @@ Public TypeScript contracts shared by AgentDomain clients and integrations.
 Install the version used by these examples:
 
 ```bash
-npm install @agentdomain/shared@0.11.0
+npm install @agentdomain/shared@0.11.1
 ```
 
 ## Usage
@@ -48,5 +48,5 @@ directly to exported TypeScript types.
 ## Links
 
 - [Documentation](https://docs.agentdomain.app/sdk/typescript)
-- [Source](https://github.com/0xmdrakib/AgentDomain/tree/main/packages/shared)
-- [Security policy](https://github.com/0xmdrakib/AgentDomain/security/policy)
+- [Source](https://github.com/Talvono/AgentDomain/tree/main/packages/shared)
+- [Security policy](https://github.com/Talvono/AgentDomain/security/policy)

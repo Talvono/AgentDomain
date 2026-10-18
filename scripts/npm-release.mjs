@@ -13,10 +13,8 @@ export const PACKAGES = [
   'eliza-plugin',
   'langchain-plugin',
 ];
-export const VERSION = '0.11.0';
-const BOOTSTRAP_NAME = '@agentdomain/langchain-plugin';
-const fail = () => {
-  throw new Error('NPM_RELEASE_REFUSED');
+const fail = (reason = '') => {
+  throw new Error(`NPM_RELEASE_REFUSED${reason ? `: ${reason}` : ''}`);
 };
 
 export function releaseRows(text) {
@@ -25,13 +23,15 @@ export function releaseRows(text) {
     .split('\n')
     .map((line) => line.split('\t'));
   if (rows.length !== PACKAGES.length) fail();
+  const version = rows[0][1];
+  if (!/^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/.test(version ?? '')) fail();
   rows.forEach((row, i) => {
     if (
       JSON.stringify(row) !==
       JSON.stringify([
         `@agentdomain/${PACKAGES[i]}`,
-        VERSION,
-        `packages/agentdomain-${PACKAGES[i]}-${VERSION}.tgz`,
+        version,
+        `packages/agentdomain-${PACKAGES[i]}-${version}.tgz`,
       ])
     )
       fail();
@@ -42,7 +42,10 @@ export function releaseRows(text) {
 export function publishEnvironment(base) {
   const env = { ...base };
   for (const key of Object.keys(env)) {
-    if (/token|password|npm_config_.*auth/i.test(key) && !key.startsWith('ACTIONS_ID_TOKEN_'))
+    if (
+      /token|password|npm_config_.*auth/i.test(key) &&
+      !['ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_URL'].includes(key)
+    )
       delete env[key];
   }
   env.NPM_CONFIG_IGNORE_SCRIPTS = 'true';
@@ -51,13 +54,8 @@ export function publishEnvironment(base) {
   return env;
 }
 
-export async function publishRelease({ root, npmCli, mode, env, lookup, run }) {
-  // Keep the old selector name for LangChain, not its historical token exception.
-  if (
-    !['oidc', 'bootstrap'].includes(mode) ||
-    !env.ACTIONS_ID_TOKEN_REQUEST_TOKEN ||
-    !env.ACTIONS_ID_TOKEN_REQUEST_URL
-  )
+export async function publishRelease({ root, npmCli, mode = 'oidc', env, lookup, run }) {
+  if (mode !== 'oidc' || !env.ACTIONS_ID_TOKEN_REQUEST_TOKEN || !env.ACTIONS_ID_TOKEN_REQUEST_URL)
     fail();
   try {
     assertReleaseContext(releaseContext(env), true, 'publish-npm.yml');
@@ -65,21 +63,28 @@ export async function publishRelease({ root, npmCli, mode, env, lookup, run }) {
     fail();
   }
   const rows = releaseRows(readFileSync(resolve(root, 'publish-order.tsv'), 'utf8'));
+  // Qualify the complete set before the first irreversible registry write.
+  let existingUnqualified = false;
   for (const [name, version, filename] of rows) {
-    if ((name === BOOTSTRAP_NAME) !== (mode === 'bootstrap')) continue;
     const archive = resolve(root, filename);
+    const integrity = `sha512-${createHash('sha512').update(readFileSync(archive)).digest('base64')}`;
     const existing = await lookup(`${encodeURIComponent(name)}/${version}`);
     if (existing.status === 200) {
-      const integrity = `sha512-${createHash('sha512').update(readFileSync(archive)).digest('base64')}`;
       if (
         existing.body?.name !== name ||
         existing.body?.version !== version ||
         existing.body?.dist?.integrity !== integrity
       )
         fail();
+      // Registry metadata (including gitHead) is not verified signed provenance.
+      existingUnqualified = true;
       continue;
     }
     if (existing.status !== 404) fail();
+  }
+  if (existingUnqualified) fail('EXISTING_PROVENANCE_UNQUALIFIED');
+  for (const [, , filename] of rows) {
+    const archive = resolve(root, filename);
     const childEnv = publishEnvironment(env);
     const result = await run(
       process.execPath,
@@ -132,8 +137,12 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
       run: (command, args, env) =>
         spawnSync(command, args, { env, stdio: 'inherit', timeout: 180_000, shell: false }).status,
     });
-  } catch {
-    console.error('npm release stopped; verify registry state before any later dispatch.');
+  } catch (error) {
+    console.error(
+      error?.message === 'NPM_RELEASE_REFUSED: EXISTING_PROVENANCE_UNQUALIFIED'
+        ? 'Existing npm artifacts require qualified signed provenance; nothing was published.'
+        : 'npm release stopped; verify registry state before any later dispatch.',
+    );
     process.exitCode = 1;
   }
 }

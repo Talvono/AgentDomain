@@ -1,17 +1,10 @@
 name: Publish Python packages
 
 on:
-  workflow_dispatch:
-    inputs:
-      project:
-        description: Python project to publish after validating all four distributions
-        required: true
-        type: choice
-        default: all
-        options:
-          - all
-          - agentdomain-crewai
-          - agentdomain-autogen
+  workflow_run:
+    workflows: ['Public CI']
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -21,13 +14,77 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
+  plan:
+    name: Plan a reviewed version change
     if: >-
+      github.event_name == 'workflow_run' && github.event.action == 'completed' &&
+      github.ref == 'refs/heads/main' && github.event.workflow_run.status == 'completed' &&
+      github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.name == 'Public CI' &&
+      github.event.workflow_run.path == '.github/workflows/public-ci.yml' &&
+      github.event.workflow_run.id > 0 && github.event.workflow_run.run_attempt > 0 && github.event.workflow_run.workflow_id > 0 &&
+      github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main' &&
+      github.event.repository.full_name == 'Talvono/AgentDomain' && github.event.repository.id == '1310051881' &&
+      github.event.repository.owner.login == 'Talvono' && github.event.repository.owner.id == '342912183' &&
+      github.event.workflow_run.repository.full_name == 'Talvono/AgentDomain' && github.event.workflow_run.repository.id == '1310051881' &&
+      github.event.workflow_run.repository.owner.login == 'Talvono' && github.event.workflow_run.repository.owner.id == '342912183' &&
+      github.event.workflow_run.head_repository.full_name == 'Talvono/AgentDomain' && github.event.workflow_run.head_repository.id == '1310051881' &&
+      github.event.workflow_run.head_repository.owner.login == 'Talvono' && github.event.workflow_run.head_repository.owner.id == '342912183' &&
+      github.event.workflow_run.actor.login == '0xmdrakib' && github.event.workflow_run.actor.id == '113634586' && github.event.workflow_run.actor.type == 'User' &&
+      github.event.workflow_run.triggering_actor.login == '0xmdrakib' && github.event.workflow_run.triggering_actor.id == '113634586' && github.event.workflow_run.triggering_actor.type == 'User' &&
+      github.sha == github.event.workflow_run.head_sha &&
+      github.repository == 'Talvono/AgentDomain' && github.repository_id == '1310051881' &&
+      github.repository_owner_id == '342912183' &&
+      github.actor == '0xmdrakib' && github.actor_id == '113634586' &&
+      github.triggering_actor == '0xmdrakib'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      release-needed: ${{ steps.plan.outputs.release-needed }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.2
+          package-manager-cache: false
+      - name: Skip unchanged versions before release builds
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/public-release-automation.mjs plan
+
+  validate:
+    needs: plan
+    if: >-
+      needs.plan.outputs.release-needed == 'true' &&
+      github.event_name == 'workflow_run' && github.event.action == 'completed' &&
+      github.event.workflow_run.status == 'completed' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.name == 'Public CI' && github.event.workflow_run.path == '.github/workflows/public-ci.yml' &&
+      github.event.workflow_run.id > 0 && github.event.workflow_run.run_attempt > 0 && github.event.workflow_run.workflow_id > 0 &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.repository.full_name == 'Talvono/AgentDomain' && github.event.repository.id == '1310051881' &&
+      github.event.repository.owner.login == 'Talvono' && github.event.repository.owner.id == '342912183' &&
+      github.event.workflow_run.repository.full_name == 'Talvono/AgentDomain' && github.event.workflow_run.repository.id == '1310051881' &&
+      github.event.workflow_run.repository.owner.login == 'Talvono' && github.event.workflow_run.repository.owner.id == '342912183' &&
+      github.event.workflow_run.head_repository.full_name == 'Talvono/AgentDomain' && github.event.workflow_run.head_repository.id == '1310051881' &&
+      github.event.workflow_run.head_repository.owner.login == 'Talvono' && github.event.workflow_run.head_repository.owner.id == '342912183' &&
+      github.event.workflow_run.actor.login == '0xmdrakib' && github.event.workflow_run.actor.id == '113634586' && github.event.workflow_run.actor.type == 'User' &&
+      github.event.workflow_run.triggering_actor.login == '0xmdrakib' && github.event.workflow_run.triggering_actor.id == '113634586' && github.event.workflow_run.triggering_actor.type == 'User' &&
+      github.event.workflow_run.event == 'push' && github.sha == github.event.workflow_run.head_sha &&
       github.ref == 'refs/heads/main' && github.repository_id == '1310051881' &&
       github.actor == '0xmdrakib' && github.actor_id == '113634586' &&
       github.triggering_actor == '0xmdrakib' &&
-      ((github.repository == '0xmdrakib/AgentDomain' && github.repository_owner_id == '113634586') ||
-      (github.repository == 'Talvono/AgentDomain' && github.repository_owner_id == '342912183'))
+      github.repository == 'Talvono/AgentDomain' && github.repository_owner_id == '342912183'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
@@ -37,14 +94,20 @@ jobs:
       release-manifest-sha256: ${{ steps.build.outputs.release-manifest-sha256 }}
       verifier-sha256: ${{ steps.build.outputs.verifier-sha256 }}
       policy-sha256: ${{ steps.build.outputs.policy-sha256 }}
+      qualification-sha256: ${{ steps.build.outputs.qualification-sha256 }}
+      identity-sha256: ${{ steps.build.outputs.identity-sha256 }}
       publication-authorized: ${{ steps.source-qualification.outputs.publication-authorized }}
     env:
+      RELEASE_VERSION: ${{ needs.plan.outputs.version }}
       OTEL_SDK_DISABLED: 'true'
       CREWAI_TELEMETRY_DISABLED: 'true'
       CREWAI_TRACING_ENABLED: 'false'
       PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -81,17 +144,21 @@ jobs:
           "$RUNNER_TEMP/python-build/bin/python" scripts/release-artifacts.py build-python --output "$RUNNER_TEMP/python-release"
           cp scripts/release-artifacts.py "$RUNNER_TEMP/python-release/verifier.py"
           cp scripts/public-release-policy.json "$RUNNER_TEMP/python-release/public-release-policy.json"
+          cp scripts/verify-release-ci.mjs "$RUNNER_TEMP/python-release/qualification.mjs"
+          cp scripts/public-release-identity.mjs "$RUNNER_TEMP/python-release/public-release-identity.mjs"
           printf 'verifier-sha256=%s\n' "$(sha256sum "$RUNNER_TEMP/python-release/verifier.py" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
           printf 'policy-sha256=%s\n' "$(sha256sum "$RUNNER_TEMP/python-release/public-release-policy.json" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          printf 'qualification-sha256=%s\n' "$(sha256sum "$RUNNER_TEMP/python-release/qualification.mjs" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
+          printf 'identity-sha256=%s\n' "$(sha256sum "$RUNNER_TEMP/python-release/public-release-identity.mjs" | cut -d ' ' -f 1)" >> "$GITHUB_OUTPUT"
       - name: Test installed CrewAI wheel with real read-only MCP child processes
         shell: bash
         run: |
           set -euo pipefail
           python -m venv "$RUNNER_TEMP/crewai"
           "$RUNNER_TEMP/crewai/bin/python" -m pip install --disable-pip-version-check --require-hashes -r packages/mcp-server/examples/crewai/requirements.lock
-          "$RUNNER_TEMP/crewai/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_crewai-0.11.0-py3-none-any.whl"
+          "$RUNNER_TEMP/crewai/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_crewai-${RELEASE_VERSION}-py3-none-any.whl"
           "$RUNNER_TEMP/crewai/bin/python" -m pip check
-          "$RUNNER_TEMP/crewai/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-crewai") == "0.11.0"; assert Path(importlib.util.find_spec("agentdomain_crewai").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())'
+          "$RUNNER_TEMP/crewai/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig, sys; from pathlib import Path; assert importlib.metadata.version("agentdomain-crewai") == sys.argv[1]; assert Path(importlib.util.find_spec("agentdomain_crewai").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())' "$RELEASE_VERSION"
           "$RUNNER_TEMP/crewai/bin/python" packages/mcp-server/test/crewai-package.py --dist "$RUNNER_TEMP/python-release/dist" -v
           AGENTDOMAIN_CREWAI_PYTHON="$RUNNER_TEMP/crewai/bin/python" node packages/mcp-server/test/crewai-integration.mjs
       - name: Test installed AutoGen wheel with real read-only MCP child processes
@@ -100,9 +167,9 @@ jobs:
           set -euo pipefail
           python -m venv "$RUNNER_TEMP/autogen"
           "$RUNNER_TEMP/autogen/bin/python" -m pip install --disable-pip-version-check -r packages/mcp-server/examples/autogen/framework-requirements.txt -c packages/mcp-server/examples/autogen/constraints.txt
-          "$RUNNER_TEMP/autogen/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-0.11.0-py3-none-any.whl"
+          "$RUNNER_TEMP/autogen/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-${RELEASE_VERSION}-py3-none-any.whl"
           "$RUNNER_TEMP/autogen/bin/python" -m pip check
-          "$RUNNER_TEMP/autogen/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-autogen") == "0.11.0"; assert Path(importlib.util.find_spec("agentdomain_autogen").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())'
+          "$RUNNER_TEMP/autogen/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig, sys; from pathlib import Path; assert importlib.metadata.version("agentdomain-autogen") == sys.argv[1]; assert Path(importlib.util.find_spec("agentdomain_autogen").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())' "$RELEASE_VERSION"
           "$RUNNER_TEMP/autogen/bin/python" packages/autogen-plugin/test/verify_artifacts.py "$RUNNER_TEMP/python-release/dist"
           AGENTDOMAIN_AUTOGEN_PYTHON="$RUNNER_TEMP/autogen/bin/python" node --test packages/mcp-server/test/autogen.integration.test.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -114,20 +181,35 @@ jobs:
           compression-level: 0
 
   publish:
-    needs: validate
+    name: Publish Python ${{ needs.plan.outputs.version }} (Public CI ${{ github.event.workflow_run.id }}/${{ github.event.workflow_run.run_attempt }})
+    needs: [plan, validate]
     if: >-
       needs.validate.outputs.publication-authorized == 'true' &&
+      github.event_name == 'workflow_run' && github.event.action == 'completed' &&
+      github.event.workflow_run.status == 'completed' && github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.name == 'Public CI' && github.event.workflow_run.path == '.github/workflows/public-ci.yml' &&
+      github.event.workflow_run.id > 0 && github.event.workflow_run.run_attempt > 0 && github.event.workflow_run.workflow_id > 0 &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.repository.full_name == 'Talvono/AgentDomain' && github.event.repository.id == '1310051881' &&
+      github.event.repository.owner.login == 'Talvono' && github.event.repository.owner.id == '342912183' &&
+      github.event.workflow_run.repository.full_name == 'Talvono/AgentDomain' && github.event.workflow_run.repository.id == '1310051881' &&
+      github.event.workflow_run.repository.owner.login == 'Talvono' && github.event.workflow_run.repository.owner.id == '342912183' &&
+      github.event.workflow_run.head_repository.full_name == 'Talvono/AgentDomain' && github.event.workflow_run.head_repository.id == '1310051881' &&
+      github.event.workflow_run.head_repository.owner.login == 'Talvono' && github.event.workflow_run.head_repository.owner.id == '342912183' &&
+      github.event.workflow_run.actor.login == '0xmdrakib' && github.event.workflow_run.actor.id == '113634586' && github.event.workflow_run.actor.type == 'User' &&
+      github.event.workflow_run.triggering_actor.login == '0xmdrakib' && github.event.workflow_run.triggering_actor.id == '113634586' && github.event.workflow_run.triggering_actor.type == 'User' &&
+      github.event.workflow_run.event == 'push' && github.sha == github.event.workflow_run.head_sha &&
       github.ref == 'refs/heads/main' && github.repository_id == '1310051881' &&
       github.actor == '0xmdrakib' && github.actor_id == '113634586' &&
       github.triggering_actor == '0xmdrakib' &&
-      ((github.repository == '0xmdrakib/AgentDomain' && github.repository_owner_id == '113634586') ||
-      (github.repository == 'Talvono/AgentDomain' && github.repository_owner_id == '342912183'))
+      github.repository == 'Talvono/AgentDomain' && github.repository_owner_id == '342912183'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment:
       name: pypi-production
     permissions:
       contents: read
+      actions: read
       id-token: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -137,24 +219,36 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.2
+          package-manager-cache: false
       - name: Verify all immutable artifacts and stage selection before requesting PyPI credentials
+        id: stage
         shell: bash
         env:
           EXPECTED_RELEASE_MANIFEST_SHA256: ${{ needs.validate.outputs.release-manifest-sha256 }}
           EXPECTED_VERIFIER_SHA256: ${{ needs.validate.outputs.verifier-sha256 }}
           EXPECTED_POLICY_SHA256: ${{ needs.validate.outputs.policy-sha256 }}
-          PROJECT_TO_PUBLISH: ${{ inputs.project }}
+          EXPECTED_QUALIFICATION_SHA256: ${{ needs.validate.outputs.qualification-sha256 }}
+          EXPECTED_IDENTITY_SHA256: ${{ needs.validate.outputs.identity-sha256 }}
         run: |
           set -euo pipefail
           [[ "$EXPECTED_VERIFIER_SHA256" =~ ^[0-9a-f]{64}$ ]]
           printf '%s  release-inputs/verifier.py\n' "$EXPECTED_VERIFIER_SHA256" | sha256sum --check --status
           [[ "$EXPECTED_POLICY_SHA256" =~ ^[0-9a-f]{64}$ ]]
           printf '%s  release-inputs/public-release-policy.json\n' "$EXPECTED_POLICY_SHA256" | sha256sum --check --status
-          python -B release-inputs/verifier.py stage-python --output release-inputs --project "$PROJECT_TO_PUBLISH"
-      # Bootstrap CrewAI first, then register AutoGen's pending publisher after
-      # CrewAI converts. Keep this workflow/pypi-production tuple for both;
-      # use all for future new versions. No password/token fallback is accepted.
+          [[ "$EXPECTED_QUALIFICATION_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          printf '%s  release-inputs/qualification.mjs\n' "$EXPECTED_QUALIFICATION_SHA256" | sha256sum --check --status
+          [[ "$EXPECTED_IDENTITY_SHA256" =~ ^[0-9a-f]{64}$ ]]
+          printf '%s  release-inputs/public-release-identity.mjs\n' "$EXPECTED_IDENTITY_SHA256" | sha256sum --check --status
+          python -B release-inputs/verifier.py stage-python --output release-inputs --project all
+      - name: Requalify the exact source immediately before publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node release-inputs/qualification.mjs --github
       - name: Publish selected verified distributions and OIDC attestations
+        if: steps.stage.outputs.publish-needed == 'true'
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: release-inputs/publish-dist/

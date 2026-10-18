@@ -8,15 +8,15 @@ MCP bridge over stdio.
 
 ## Install
 
-These examples use `agentdomain-autogen==0.11.0` on PyPI and
-`@agentdomain/mcp-server@0.11.0` on npm.
+These examples use `agentdomain-autogen==0.11.1` on PyPI and
+`@agentdomain/mcp-server@0.11.1` on npm.
 
 Install the Python requirements in an isolated venv
 and the exact Node MCP bridge in a trusted directory:
 
 ```bash
 python -m pip install -r requirements.txt -c constraints.txt
-npm install --ignore-scripts --no-audit --no-fund @agentdomain/mcp-server@0.11.0
+npm install --ignore-scripts --no-audit --no-fund @agentdomain/mcp-server@0.11.1
 ```
 
 For release staging from the public checkout, install the reviewed local wheel
@@ -28,7 +28,7 @@ python -m pip install \
   -r packages/mcp-server/examples/autogen/framework-requirements.txt \
   -c packages/mcp-server/examples/autogen/constraints.txt
 python -m pip install --force-reinstall --no-deps --no-index \
-  .qa/autogen-package/dist/agentdomain_autogen-0.11.0-py3-none-any.whl
+  .qa/autogen-package/dist/agentdomain_autogen-0.11.1-py3-none-any.whl
 python -m pip check
 ```
 
@@ -85,7 +85,7 @@ optional CLI, which accepts trusted owner model configuration through
 calls may cost money; provider keys/config are never persisted or sent to Node.
 The deterministic examples and fixture tests need no model key.
 
-See the [canonical package guide](https://github.com/0xmdrakib/AgentDomain/tree/main/packages/autogen-plugin)
+See the [canonical package guide](https://github.com/Talvono/AgentDomain/tree/main/packages/autogen-plugin)
 for exact bounds, pinned framework versions, owner-approval and environment
 boundaries, packaging and usage. The legacy `agentdomain_workbench.py` module
 only re-exports those package APIs; it has no separate guard implementation.

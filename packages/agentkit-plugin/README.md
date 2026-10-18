@@ -7,7 +7,7 @@ Coinbase AgentKit action provider for AgentDomain's agent-native identity and co
 Install the version used by these examples:
 
 ```bash
-npm install @agentdomain/agentkit-plugin@0.11.0 @coinbase/agentkit
+npm install @agentdomain/agentkit-plugin@0.11.1 @coinbase/agentkit
 ```
 
 ## Create the provider
@@ -55,5 +55,5 @@ before applying them and use registration quotes before authorizing payment.
 
 - [AgentKit guide](https://docs.agentdomain.app/frameworks/agentkit)
 - [API discovery](https://api.agentdomain.app/api/v1)
-- [Source](https://github.com/0xmdrakib/AgentDomain/tree/main/packages/agentkit-plugin)
-- [Security policy](https://github.com/0xmdrakib/AgentDomain/security/policy)
+- [Source](https://github.com/Talvono/AgentDomain/tree/main/packages/agentkit-plugin)
+- [Security policy](https://github.com/Talvono/AgentDomain/security/policy)

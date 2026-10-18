@@ -1,5 +1,7 @@
 """Typed, read-only AgentDomain tools backed by CrewAI's native MCP client."""
 
+from importlib.metadata import version
+
 from .connector import (
     READ_ONLY_TOOLS,
     AutoRenewArguments,
@@ -16,7 +18,7 @@ from .connector import (
     server_parameters,
 )
 
-__version__ = "0.11.0"
+__version__ = version("agentdomain-crewai")
 
 __all__ = [
     "READ_ONLY_TOOLS",

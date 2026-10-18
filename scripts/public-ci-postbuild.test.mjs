@@ -20,6 +20,9 @@ import { parsers } from 'prettier/plugins/yaml';
 import { CLEANUP_GRACE_MS, main, postbuildLanes, superviseLanes } from './public-ci-postbuild.mjs';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
+const packageManifest = JSON.parse(
+  readFileSync(join(ROOT, 'packages/mcp-server/package.json'), 'utf8'),
+);
 const linux = { skip: process.platform !== 'linux' };
 
 function fixture(t) {
@@ -109,6 +112,7 @@ function verifyCommands(lanes) {
   ])
     assert.equal(web.split(line).length - 1, 1, line);
   for (const line of [
+    'RELEASE_VERSION="$(python -B scripts/release-artifacts.py source-version)"',
     'python -m venv "$RUNNER_TEMP/python-build"',
     '"$RUNNER_TEMP/python-build/bin/python" -m pip install --disable-pip-version-check --require-hashes -r scripts/python-build-requirements.lock',
     '"$RUNNER_TEMP/python-build/bin/python" scripts/release-artifacts.py build-python --output "$RUNNER_TEMP/python-release"',
@@ -122,24 +126,25 @@ function verifyCommands(lanes) {
     'export OTEL_SDK_DISABLED=true CREWAI_TELEMETRY_DISABLED=true CREWAI_TRACING_ENABLED=false PYTHONDONTWRITEBYTECODE=1',
     'python -m venv "$RUNNER_TEMP/agentdomain-crewai"',
     'uv --no-config --no-cache --no-python-downloads pip install --python "$RUNNER_TEMP/agentdomain-crewai/bin/python" --require-hashes --no-build -r packages/mcp-server/examples/crewai/requirements.lock',
-    '"$RUNNER_TEMP/agentdomain-crewai/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_crewai-0.11.0-py3-none-any.whl"',
+    '"$RUNNER_TEMP/agentdomain-crewai/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_crewai-$RELEASE_VERSION-py3-none-any.whl"',
     '"$RUNNER_TEMP/agentdomain-crewai/bin/python" -m pip check',
     '"$RUNNER_TEMP/agentdomain-crewai/bin/python" -I -c',
-    'importlib.metadata.version("agentdomain-crewai") == "0.11.0"',
+    'importlib.metadata.version("agentdomain-crewai") == sys.argv[1]',
     'Path(importlib.util.find_spec("agentdomain_crewai").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())',
     '"$RUNNER_TEMP/agentdomain-crewai/bin/python" packages/mcp-server/test/crewai-package.py --dist "$RUNNER_TEMP/python-release/dist" -v',
     'AGENTDOMAIN_CREWAI_PYTHON="$RUNNER_TEMP/agentdomain-crewai/bin/python" node packages/mcp-server/test/crewai-integration.mjs',
     'python -m venv "$RUNNER_TEMP/agentdomain-autogen"',
     '"$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip install --disable-pip-version-check -r packages/mcp-server/examples/autogen/framework-requirements.txt -c packages/mcp-server/examples/autogen/constraints.txt',
-    '"$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-0.11.0-py3-none-any.whl"',
+    '"$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-$RELEASE_VERSION-py3-none-any.whl"',
     '"$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip check',
     '"$RUNNER_TEMP/agentdomain-autogen/bin/python" -I -c',
-    'importlib.metadata.version("agentdomain-autogen") == "0.11.0"',
+    'importlib.metadata.version("agentdomain-autogen") == sys.argv[1]',
     'Path(importlib.util.find_spec("agentdomain_autogen").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())',
     '"$RUNNER_TEMP/agentdomain-autogen/bin/python" packages/autogen-plugin/test/verify_artifacts.py "$RUNNER_TEMP/python-release/dist"',
     'AGENTDOMAIN_AUTOGEN_PYTHON="$RUNNER_TEMP/agentdomain-autogen/bin/python" node --test packages/mcp-server/test/autogen.integration.test.mjs',
   ])
     assert.equal(native.split(line).length - 1, 1, line);
+  assert.equal(native.split('\' "$RELEASE_VERSION"').length - 1, 2);
   for (const script of [web, native]) {
     assert.equal(script.split('--connect-timeout 10 --max-time 60 --retry 0').length - 1, 1);
     assert.doesNotMatch(
@@ -161,18 +166,19 @@ function verifyCommands(lanes) {
     [
       native,
       [
+        'scripts/release-artifacts.py source-version',
         'scripts/release-artifacts.py build-python',
         'sha256sum --check --status',
         'tar -xzf',
         '"$install_dir/uv" --version',
         'uv --no-config --no-cache --no-python-downloads pip install',
-        'agentdomain_crewai-0.11.0-py3-none-any.whl',
+        'agentdomain_crewai-$RELEASE_VERSION-py3-none-any.whl',
         '"$RUNNER_TEMP/agentdomain-crewai/bin/python" -m pip check',
         '"$RUNNER_TEMP/agentdomain-crewai/bin/python" -I -c',
         'crewai-package.py',
         'crewai-integration.mjs',
         'python -m venv "$RUNNER_TEMP/agentdomain-autogen"',
-        'agentdomain_autogen-0.11.0-py3-none-any.whl',
+        'agentdomain_autogen-$RELEASE_VERSION-py3-none-any.whl',
         '"$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip check',
         '"$RUNNER_TEMP/agentdomain-autogen/bin/python" -I -c',
         'packages/autogen-plugin/test/verify_artifacts.py',
@@ -213,6 +219,9 @@ test('command checks reject checksum, locked installation, origin, native and fo
     'crewai-integration.mjs',
     'autogen.integration.test.mjs',
     'footer-routes.smoke.mjs',
+    'scripts/release-artifacts.py source-version',
+    '== sys.argv[1]',
+    '\' "$RELEASE_VERSION"',
   ]) {
     const changed = postbuildLanes('full').map((lane) => ({
       ...lane,
@@ -552,7 +561,8 @@ const args = process.argv.slice(3);
 const proof = process.env.PROOF_ROOT;
 const wrapper = readFileSync(process.env.PROOF_WRAPPER, 'utf8');
 const framework = basename(dirname(dirname(tool))).replace('agentdomain-', '');
-const group = Number(readFileSync('/proc/self/stat', 'utf8').split(') ')[1].split(' ')[2]);
+const group = process.platform === 'linux' ? Number(readFileSync('/proc/self/stat', 'utf8').split(') ')[1].split(' ')[2]) : 0;
+const version = JSON.parse(readFileSync(process.env.PROOF_PACKAGE_METADATA, 'utf8')).version;
 const env = Object.fromEntries(['OTEL_SDK_DISABLED', 'CREWAI_TELEMETRY_DISABLED', 'CREWAI_TRACING_ENABLED', 'PYTHONDONTWRITEBYTECODE'].filter((name) => process.env[name] !== undefined).map((name) => [name, process.env[name]]));
 const record = (phase, owner = framework) => appendFileSync(join(proof, 'calls.jsonl'), JSON.stringify({ role, phase, owner, args, env, pid: process.pid, parent: process.ppid, group, path: tool }) + '\n');
 const awaitPeer = async () => {
@@ -562,7 +572,10 @@ const awaitPeer = async () => {
   }
   throw new Error('Frameworks did not overlap');
 };
-if (role === 'python' && args[0] === '-m' && args[1] === 'venv') {
+if (role === 'python' && args.includes('source-version')) {
+  record('source-version', 'setup');
+  process.stdout.write(version + '\n');
+} else if (role === 'python' && args[0] === '-m' && args[1] === 'venv') {
   const target = args[2];
   const owner = basename(target).replace('agentdomain-', '');
   mkdirSync(join(target, 'bin'), { recursive: true });
@@ -583,7 +596,7 @@ if (role === 'python' && args[0] === '-m' && args[1] === 'venv') {
 } else if (role === 'python' && args.includes('build-python')) {
   const output = args[args.indexOf('--output') + 1];
   mkdirSync(join(output, 'dist'), { recursive: true });
-  for (const name of ['crewai', 'autogen']) writeFileSync(join(output, 'dist/agentdomain_' + name + '-0.11.0-py3-none-any.whl'), 'fixture-wheel-' + name);
+  for (const name of ['crewai', 'autogen']) writeFileSync(join(output, 'dist/agentdomain_' + name + '-' + version + '-py3-none-any.whl'), 'fixture-wheel-' + name);
   writeFileSync(join(proof, 'wheel-ready'), output);
   record('wheel-build', 'setup');
 } else if (role === 'tar') {
@@ -603,7 +616,10 @@ if (role === 'python' && args[0] === '-m' && args[1] === 'venv') {
   if (args[0] === '-m' && args[1] === 'pip' && args[2] === 'check') {
     record('pip-check');
     if ([framework, 'both'].includes(process.env.PROOF_FAIL_FRAMEWORK)) process.exit(framework === 'crewai' ? 11 : 17);
-  } else if (args[0] === '-I') record('installed-origin');
+  } else if (args[0] === '-I') {
+    assert.equal(args.at(-1), version);
+    record('installed-origin');
+  }
   else if (args[0] === '-m' && args[1] === 'pip') {
     if (args.at(-1).endsWith('.whl')) assert.ok(existsSync(args.at(-1)));
     record('install');
@@ -617,12 +633,14 @@ if (role === 'python' && args[0] === '-m' && args[1] === 'venv') {
 } else throw new Error('Unexpected mocked tool: ' + role);
 `;
 
-function nativeFixture(t, overrides = {}) {
+function nativeFixture(t, overrides = {}, version = packageManifest.version) {
   const f = fixture(t);
   const bin = join(f.directory, 'bin');
   mkdirSync(bin);
   const wrapper = join(f.directory, 'wrapper');
   const tool = join(f.directory, 'mock-tool.mjs');
+  const metadata = join(f.directory, 'package.json');
+  writeFileSync(metadata, JSON.stringify({ ...packageManifest, version }));
   writeFileSync(wrapper, mockWrapper, { mode: 0o755 });
   writeFileSync(tool, mockTool);
   for (const name of ['python', 'node', 'curl', 'sha256sum', 'tar'])
@@ -646,6 +664,7 @@ function nativeFixture(t, overrides = {}) {
       PROOF_NODE: process.execPath,
       PROOF_TOOL: tool,
       PROOF_WRAPPER: wrapper,
+      PROOF_PACKAGE_METADATA: metadata,
       OTEL_SDK_DISABLED: 'fixture-parent',
       CREWAI_TELEMETRY_DISABLED: 'fixture-parent',
       CREWAI_TRACING_ENABLED: 'fixture-parent',
@@ -689,6 +708,40 @@ function nativeFixture(t, overrides = {}) {
   };
 }
 
+test('mock source-version, wheel names and installed checks follow current and future metadata', (t) => {
+  for (const version of [packageManifest.version, '0.12.0']) {
+    const f = nativeFixture(t, { RELEASE_VERSION: 'ignored-ambient-version' }, version);
+    const invoke = (tool, args) =>
+      spawnSync(process.execPath, [f.options.env.PROOF_TOOL, tool, ...args], {
+        env: f.options.env,
+        encoding: 'utf8',
+      });
+    const python = join(f.directory, 'bin/python');
+    const source = invoke(python, ['-B', 'scripts/release-artifacts.py', 'source-version']);
+    assert.equal(source.status, 0, source.stderr);
+    assert.equal(source.stdout, `${version}\n`);
+    const output = join(f.directory, 'python-release');
+    const build = invoke(python, [
+      'scripts/release-artifacts.py',
+      'build-python',
+      '--output',
+      output,
+    ]);
+    assert.equal(build.status, 0, build.stderr);
+    assert.deepEqual(
+      readdirSync(join(output, 'dist')).sort(),
+      ['autogen', 'crewai'].map((name) => `agentdomain_${name}-${version}-py3-none-any.whl`),
+    );
+    for (const name of ['crewai', 'autogen']) {
+      const installed = join(f.directory, `agentdomain-${name}/bin/python`);
+      const check = invoke(installed, ['-I', '-c', 'fixture-installed-origin', version]);
+      assert.equal(check.status, 0, check.stderr);
+      const stale = invoke(installed, ['-I', '-c', 'fixture-installed-origin', '0.11.0']);
+      assert.notEqual(stale.status, 0);
+    }
+  }
+});
+
 async function nativeStopped(f) {
   for (const pid of f.groups) await stopped(pid);
   for (const name of ['web', 'crewai', 'autogen']) {
@@ -717,7 +770,14 @@ for (const failure of [undefined, 'crewai', 'autogen', 'both'])
       assert.equal(f.groups.length, 2);
       assert.notEqual(f.groups[0], f.groups[1]);
       const calls = f.calls();
-      for (const phase of ['wheel-build', 'curl', 'sha256sum', 'extract', 'uv-version'])
+      for (const phase of [
+        'source-version',
+        'wheel-build',
+        'curl',
+        'sha256sum',
+        'extract',
+        'uv-version',
+      ])
         assert.equal(calls.filter((call) => call.phase === phase).length, 1, phase);
       const starts = ['crewai', 'autogen'].map((name) =>
         JSON.parse(readFileSync(join(f.directory, `${name}-start`), 'utf8')),

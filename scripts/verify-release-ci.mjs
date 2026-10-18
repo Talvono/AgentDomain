@@ -6,10 +6,11 @@ import { isDeepStrictEqual, promisify } from 'node:util';
 import {
   assertReleaseContext,
   releaseContext,
+  RELEASE_CI_LIMITS,
   RELEASE_POLICY,
 } from './public-release-identity.mjs';
 
-export const RELEASE_CI_LIMITS = Object.freeze({ maxBytes: 1_048_576, timeoutMs: 10_000 });
+export { RELEASE_CI_LIMITS } from './public-release-identity.mjs';
 export const FULL_PUBLIC_CI_STEP = 'Full Public Qualification (agentdomain.public-ci.full.v1)';
 const positive = (value) => Number.isSafeInteger(value) && value > 0;
 
@@ -19,7 +20,8 @@ function selectRun(payload, context) {
     payload?.source_commit?.sha !== context.sha ||
     payload.source_commit.commit?.verification?.verified !== true ||
     payload.triggering_operator?.login !== RELEASE_POLICY.operator.login ||
-    String(payload.triggering_operator?.id) !== RELEASE_POLICY.operator.id
+    String(payload.triggering_operator?.id) !== RELEASE_POLICY.operator.id ||
+    (context.sourceRun && payload.triggering_operator?.type !== 'User')
   )
     throw new Error('RELEASE_SOURCE_UNQUALIFIED');
   if (
@@ -48,6 +50,12 @@ function selectRun(payload, context) {
       run.conclusion === 'success' &&
       run.path === '.github/workflows/public-ci.yml' &&
       run.url === `https://api.github.com/repos/${context.repository}/actions/runs/${run.id}` &&
+      (!context.sourceRun ||
+        (run.id === context.sourceRun.id &&
+          run.run_attempt === context.sourceRun.run_attempt &&
+          run.workflow_id === context.sourceRun.workflow_id &&
+          run.name === 'Public CI' &&
+          run.event === 'push')) &&
       [run.actor, run.triggering_actor].every(
         (actor) =>
           actor?.login === RELEASE_POLICY.operator.login &&
@@ -110,6 +118,8 @@ const runIdentity = (run) => ({
     [
       'id',
       'run_attempt',
+      'workflow_id',
+      'name',
       'head_sha',
       'head_branch',
       'event',
@@ -155,7 +165,7 @@ export async function qualifyReleaseCi(context, request) {
   return selected.id;
 }
 
-async function githubRead(path) {
+export async function githubRead(path) {
   const { stdout } = await promisify(execFile)(
     'gh',
     ['api', '--hostname', 'github.com', '--method', 'GET', path],

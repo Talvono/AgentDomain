@@ -1,4 +1,4 @@
 # Official Microsoft AutoGen, not the similarly named autogen/AG2 distribution.
 # MCP v1 is deliberate: AutoGen 0.7.5 does not cap its own MCP dependency at v2.
 # Before PyPI publication, install the reviewed local wheel first.
-agentdomain-autogen==0.11.0
+agentdomain-autogen==0.11.1
