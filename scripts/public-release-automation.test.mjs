@@ -828,25 +828,42 @@ test('the native request budget reserves all final mutation readbacks before the
     await t.json('https://pypi.org/pypi/example/json');
   assert.throws(() => t.api.reserve(8), /REQUEST_BUDGET/);
 });
-test('official registry adapter verifies ten immutable blobs, isolated six-node npm audit and authenticated provenance', async () => {
-  const temp = mkdtempSync(join(tmpdir(), 'agentdomain-release-test-'));
-  const env = {
-    RUNNER_TEMP: temp,
-    PUBLIC_RELEASE_NPM_CLI: '/tool/npm-cli.js',
-    PUBLIC_RELEASE_VERIFY_PYTHON: '/tool/python',
-    GH_TOKEN: 'never-in-verifier',
-    ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'never-in-verifier',
+function registryFixtureTransport(blob) {
+  const sha256 = createHash('sha256').update(blob).digest('hex');
+  const filenames = (name) => {
+    const slug = name.replaceAll('-', '_');
+    return [`${slug}-${version}.tar.gz`, `${slug}-${version}-py3-none-any.whl`];
   };
-  const blob = Buffer.from('fixture artifact bytes'),
-    sha256 = createHash('sha256').update(blob).digest('hex');
-  const transport = {
-    bytes: async () => blob,
+  return {
+    bytes: async (url) => {
+      const parsed = new URL(url);
+      const npm =
+        parsed.origin === 'https://registry.npmjs.org' &&
+        NPM_PACKAGES.some(
+          (slug) => parsed.pathname === `/@agentdomain/${slug}/-/${slug}-${version}.tgz`,
+        );
+      const pypi =
+        parsed.origin === 'https://files.pythonhosted.org' &&
+        PYTHON_PACKAGES.some((name) =>
+          filenames(name).some((filename) => parsed.pathname === `/packages/example/${filename}`),
+        );
+      assert(npm || pypi, 'Unexpected fixture artifact URL');
+      return blob;
+    },
     json: async (url) => {
-      if (url.includes('/-/npm/v1/attestations/'))
+      const parsed = new URL(url);
+      if (
+        parsed.origin === 'https://registry.npmjs.org' &&
+        NPM_PACKAGES.some((slug) => parsed.pathname === `/-/npm/v1/attestations/${slug}`)
+      )
         return { attestations: [{ predicateType: 'https://slsa.dev/provenance/v1', bundle: {} }] };
-      if (url.includes('registry.npmjs.org/')) {
-        const name = decodeURIComponent(new URL(url).pathname.split('/')[1]),
-          slug = name.split('/')[1];
+      const slug =
+        parsed.origin === 'https://registry.npmjs.org' &&
+        NPM_PACKAGES.find(
+          (slug) => parsed.pathname === `/${encodeURIComponent(`@agentdomain/${slug}`)}/${version}`,
+        );
+      if (slug) {
+        const name = `@agentdomain/${slug}`;
         return {
           name,
           version,
@@ -861,23 +878,65 @@ test('official registry adapter verifies ten immutable blobs, isolated six-node 
           },
         };
       }
-      if (url.includes('/integrity/')) return { version: 1, attestation_bundles: [] };
-      const name = new URL(url).pathname.split('/')[2],
-        slug = name.replaceAll('-', '_');
+      if (
+        parsed.origin === 'https://pypi.org' &&
+        PYTHON_PACKAGES.some((name) =>
+          filenames(name).some(
+            (filename) =>
+              parsed.pathname === `/integrity/${name}/${version}/${filename}/provenance`,
+          ),
+        )
+      )
+        return { version: 1, attestation_bundles: [] };
+      const name =
+        parsed.origin === 'https://pypi.org' &&
+        PYTHON_PACKAGES.find((name) => parsed.pathname === `/pypi/${name}/${version}/json`);
+      assert(name, 'Unexpected fixture metadata URL');
       return {
         info: { name, version },
-        urls: [`${slug}-${version}.tar.gz`, `${slug}-${version}-py3-none-any.whl`].map(
-          (filename) => ({
-            filename,
-            size: blob.length,
-            digests: { sha256 },
-            yanked: false,
-            url: `https://files.pythonhosted.org/packages/example/${filename}`,
-          }),
-        ),
+        urls: filenames(name).map((filename) => ({
+          filename,
+          size: blob.length,
+          digests: { sha256 },
+          yanked: false,
+          url: `https://files.pythonhosted.org/packages/example/${filename}`,
+        })),
       };
     },
   };
+}
+test('registry fixture routing rejects deceptive origins and paths for metadata, provenance and bytes', async () => {
+  const transport = registryFixtureTransport(Buffer.from('fixture'));
+  for (const url of [
+    `https://registry.npmjs.org.evil.test/${encodeURIComponent('@agentdomain/sdk')}/${version}`,
+    `https://evil.test/registry.npmjs.org/${encodeURIComponent('@agentdomain/sdk')}/${version}`,
+    'https://evil.test/-/npm/v1/attestations/sdk',
+    'https://registry.npmjs.org/evil/-/npm/v1/attestations/sdk',
+    'https://pypi.org.evil.test/integrity/agentdomain-crewai/0.11.1/file/provenance',
+    'https://evil.test/pypi.org/pypi/agentdomain-crewai/0.11.1/json',
+    'https://pypi.org/evil/integrity/agentdomain-crewai/0.11.1/file/provenance',
+  ])
+    await assert.rejects(transport.json(url), /Unexpected fixture metadata URL/);
+  for (const url of [
+    `https://registry.npmjs.org.evil.test/@agentdomain/sdk/-/sdk-${version}.tgz`,
+    `https://evil.test/registry.npmjs.org/@agentdomain/sdk/-/sdk-${version}.tgz`,
+    `https://registry.npmjs.org/evil/@agentdomain/sdk/-/sdk-${version}.tgz`,
+    `https://files.pythonhosted.org.evil.test/packages/example/agentdomain_crewai-${version}.tar.gz`,
+    `https://files.pythonhosted.org/evil/packages/example/agentdomain_crewai-${version}.tar.gz`,
+  ])
+    await assert.rejects(transport.bytes(url), /Unexpected fixture artifact URL/);
+});
+test('official registry adapter verifies ten immutable blobs, isolated six-node npm audit and authenticated provenance', async () => {
+  const temp = mkdtempSync(join(tmpdir(), 'agentdomain-release-test-'));
+  const env = {
+    RUNNER_TEMP: temp,
+    PUBLIC_RELEASE_NPM_CLI: '/tool/npm-cli.js',
+    PUBLIC_RELEASE_VERIFY_PYTHON: '/tool/python',
+    GH_TOKEN: 'never-in-verifier',
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'never-in-verifier',
+  };
+  const blob = Buffer.from('fixture artifact bytes');
+  const transport = registryFixtureTransport(blob);
   let provenance = 0,
     audits = 0;
   try {
