@@ -1,6 +1,6 @@
 {
   "name": "@agentdomain/langchain-plugin",
-  "version": "0.11.0",
+  "version": "0.11.1",
   "description": "Read-only LangChain tools for AgentDomain identity and renewal observations",
   "keywords": [
     "agentdomain",
@@ -13,12 +13,12 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/0xmdrakib/AgentDomain.git",
+    "url": "git+https://github.com/Talvono/AgentDomain.git",
     "directory": "packages/langchain-plugin"
   },
   "homepage": "https://docs.agentdomain.app/frameworks/langchain",
   "bugs": {
-    "url": "https://github.com/0xmdrakib/AgentDomain/issues"
+    "url": "https://github.com/Talvono/AgentDomain/issues"
   },
   "type": "module",
   "sideEffects": false,

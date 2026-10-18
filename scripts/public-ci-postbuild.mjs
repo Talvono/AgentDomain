@@ -50,6 +50,7 @@ node apps/frontend/test/footer-routes.smoke.mjs http://127.0.0.1:8790
 `;
 
 const NATIVE_PYTHON = String.raw`
+RELEASE_VERSION="$(python -B scripts/release-artifacts.py source-version)"
 python -m venv "$RUNNER_TEMP/python-build"
 "$RUNNER_TEMP/python-build/bin/python" -m pip install --disable-pip-version-check --require-hashes -r scripts/python-build-requirements.lock
 "$RUNNER_TEMP/python-build/bin/python" scripts/release-artifacts.py build-python --output "$RUNNER_TEMP/python-release"
@@ -74,9 +75,9 @@ set +m
 export OTEL_SDK_DISABLED=true CREWAI_TELEMETRY_DISABLED=true CREWAI_TRACING_ENABLED=false PYTHONDONTWRITEBYTECODE=1
 python -m venv "$RUNNER_TEMP/agentdomain-crewai"
 uv --no-config --no-cache --no-python-downloads pip install --python "$RUNNER_TEMP/agentdomain-crewai/bin/python" --require-hashes --no-build -r packages/mcp-server/examples/crewai/requirements.lock
-"$RUNNER_TEMP/agentdomain-crewai/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_crewai-0.11.0-py3-none-any.whl"
+"$RUNNER_TEMP/agentdomain-crewai/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_crewai-$RELEASE_VERSION-py3-none-any.whl"
 "$RUNNER_TEMP/agentdomain-crewai/bin/python" -m pip check
-"$RUNNER_TEMP/agentdomain-crewai/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-crewai") == "0.11.0"; assert Path(importlib.util.find_spec("agentdomain_crewai").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())'
+"$RUNNER_TEMP/agentdomain-crewai/bin/python" -I -c 'import importlib.util, importlib.metadata, sys, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-crewai") == sys.argv[1]; assert Path(importlib.util.find_spec("agentdomain_crewai").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())' "$RELEASE_VERSION"
 "$RUNNER_TEMP/agentdomain-crewai/bin/python" packages/mcp-server/test/crewai-package.py --dist "$RUNNER_TEMP/python-release/dist" -v
 AGENTDOMAIN_CREWAI_PYTHON="$RUNNER_TEMP/agentdomain-crewai/bin/python" node packages/mcp-server/test/crewai-integration.mjs
 ) &
@@ -87,9 +88,9 @@ unset CREWAI_TELEMETRY_DISABLED CREWAI_TRACING_ENABLED
 export OTEL_SDK_DISABLED=true PYTHONDONTWRITEBYTECODE=1
 python -m venv "$RUNNER_TEMP/agentdomain-autogen"
 "$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip install --disable-pip-version-check -r packages/mcp-server/examples/autogen/framework-requirements.txt -c packages/mcp-server/examples/autogen/constraints.txt
-"$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-0.11.0-py3-none-any.whl"
+"$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip install --no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-$RELEASE_VERSION-py3-none-any.whl"
 "$RUNNER_TEMP/agentdomain-autogen/bin/python" -m pip check
-"$RUNNER_TEMP/agentdomain-autogen/bin/python" -I -c 'import importlib.util, importlib.metadata, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-autogen") == "0.11.0"; assert Path(importlib.util.find_spec("agentdomain_autogen").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())'
+"$RUNNER_TEMP/agentdomain-autogen/bin/python" -I -c 'import importlib.util, importlib.metadata, sys, sysconfig; from pathlib import Path; assert importlib.metadata.version("agentdomain-autogen") == sys.argv[1]; assert Path(importlib.util.find_spec("agentdomain_autogen").origin).resolve().is_relative_to(Path(sysconfig.get_path("purelib")).resolve())' "$RELEASE_VERSION"
 "$RUNNER_TEMP/agentdomain-autogen/bin/python" packages/autogen-plugin/test/verify_artifacts.py "$RUNNER_TEMP/python-release/dist"
 AGENTDOMAIN_AUTOGEN_PYTHON="$RUNNER_TEMP/agentdomain-autogen/bin/python" node --test packages/mcp-server/test/autogen.integration.test.mjs
 ) &

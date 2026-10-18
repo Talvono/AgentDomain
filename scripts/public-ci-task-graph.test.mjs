@@ -11,12 +11,12 @@ const digest = (value) => createHash('sha256').update(JSON.stringify(value)).dig
 const originalManifestHashes = {
   'apps/docs': '0a2e231a6a94cb56fa1de0434d96c9274cf07caabcf2258185bc6b2ffc444989',
   'apps/frontend': '6574377970745719e884691391304f83cce3baf69328718e27281f185e5858cf',
-  'packages/shared': 'c2de8ace97e35d6c37a784c6bc557379c86f67a8bd57bc00ad0a879f3b3a292e',
-  'packages/sdk': '41c8749cdebad075dca4d5931265e772d7f52e0233629f5d201b3804d364c643',
-  'packages/mcp-server': '658ae9f56cb33008d093a624bdbaa8cdffeb736f1556d38667d853a97be16c29',
-  'packages/agentkit-plugin': '442589abe7c663a50443fda18246c62cc7b3d18cc8198c10c2edd1dc42420e77',
-  'packages/eliza-plugin': '347912e16ae223aa9b1deb5b0d29d586b2fa7f2625f0a75b757e0230517141be',
-  'packages/langchain-plugin': '94af87fdd957ed2bae3b811d7ac58a0f96e6b99960c8e6ba73b18e050e9d1282',
+  'packages/shared': 'e69fa04cd6e5af8d5c147a92957ae16094be4eee8b50f0d80bd1f02e205ebceb',
+  'packages/sdk': 'c38c0291fd3e1613741d622d84dcd2eab0124681c80f2163c7d08c78bbc8f072',
+  'packages/mcp-server': '0705ed17035867736bbd15d58d4fbc23cb16cd14be8b4eeaa0cb7e9aff911ec3',
+  'packages/agentkit-plugin': '7704b0da406c7c02ed056145f1f103289b251a86797bbf889cd1f4a3418fe7ac',
+  'packages/eliza-plugin': '2d09cd45c45300956b708636d2fb2fbe63171600089d05bb720dce328905e559',
+  'packages/langchain-plugin': '3825deae0a3824b29438d99517591b5f5439aaf7f70f472cad3eb1b0d3ff8fc6',
 };
 const originalTurboHash = 'c2d5658becbfcb5a1e4dfa2d3e9b1a93ac0630afbb48485daa24e48d88756fdb';
 const coreTasks = ['lint:ci', 'typecheck:ci', 'test:ci', 'build:ci'];

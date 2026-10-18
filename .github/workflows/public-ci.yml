@@ -107,6 +107,7 @@ jobs:
         run: |
           set -euo pipefail
           node --test scripts/npm-release.test.mjs
+          node --test scripts/public-release-automation.test.mjs
           node --test scripts/public-ci-postbuild.test.mjs
           python -B -m unittest discover -s scripts -p test_release_artifacts.py
           python -B -m unittest discover -s scripts -p test_python_boundary.py

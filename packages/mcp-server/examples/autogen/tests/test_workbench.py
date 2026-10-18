@@ -8,6 +8,7 @@ import inspect
 import json
 import os
 import sys
+import tomllib
 import unittest
 from importlib.metadata import version
 from pathlib import Path
@@ -15,6 +16,7 @@ from unittest.mock import patch
 
 EXAMPLE = Path(__file__).resolve().parents[1]
 ROOT = Path(__file__).resolve().parents[5]
+VERSION = tomllib.loads((ROOT / "packages/autogen-plugin/pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 sys.path.insert(0, str(EXAMPLE))
 
 from agentdomain_workbench import (
@@ -58,7 +60,7 @@ def workbench(mode: str = "found") -> AgentDomainWorkbench:
 
 class InputAndEnvironmentTests(unittest.TestCase):
     def test_connector_is_loaded_from_the_installed_distribution_not_checkout(self):
-        self.assertEqual(version("agentdomain-autogen"), "0.11.0")
+        self.assertEqual(version("agentdomain-autogen"), VERSION)
         implementation = Path(inspect.getfile(AgentDomainWorkbench)).resolve()
         self.assertTrue(implementation.is_relative_to(Path(sys.prefix).resolve()))
         self.assertNotIn("packages/autogen-plugin/src", implementation.as_posix())

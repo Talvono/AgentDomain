@@ -10,10 +10,12 @@ import os
 from pathlib import Path
 import sys
 import sysconfig
+import tomllib
 import unittest
 from unittest.mock import patch
 
 PACKAGE = Path(__file__).resolve().parents[1]
+VERSION = tomllib.loads((PACKAGE.parent / "crewai-plugin/pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 sys.path.insert(0, str(PACKAGE / "examples" / "crewai"))
 
 from crewai.tools import BaseTool  # noqa: E402
@@ -177,8 +179,8 @@ def flow(tools, **overrides):
 
 class ArgumentsTests(unittest.TestCase):
     def test_connector_is_installed_wheel_and_example_is_only_a_bridge(self):
-        self.assertEqual(importlib.metadata.version("agentdomain-crewai"), "0.11.0")
-        self.assertEqual(agentdomain_crewai.__version__, "0.11.0")
+        self.assertEqual(importlib.metadata.version("agentdomain-crewai"), VERSION)
+        self.assertEqual(agentdomain_crewai.__version__, VERSION)
         assert agentdomain_crewai.__file__ is not None
         installed_path = Path(agentdomain_crewai.__file__).resolve()
         self.assertTrue(

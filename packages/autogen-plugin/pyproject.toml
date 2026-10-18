@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentdomain-autogen"
-version = "0.11.0"
+version = "0.11.1"
 description = "Guarded native AutoGen workbench for AgentDomain identity and renewal planning"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -29,8 +29,8 @@ dependencies = [
 [project.urls]
 Homepage = "https://agentdomain.app"
 Documentation = "https://docs.agentdomain.app/frameworks/autogen/"
-Repository = "https://github.com/0xmdrakib/AgentDomain/tree/main/packages/autogen-plugin"
-Issues = "https://github.com/0xmdrakib/AgentDomain/issues"
+Repository = "https://github.com/Talvono/AgentDomain/tree/main/packages/autogen-plugin"
+Issues = "https://github.com/Talvono/AgentDomain/issues"
 
 [project.scripts]
 agentdomain-autogen = "agentdomain_autogen.cli:main"

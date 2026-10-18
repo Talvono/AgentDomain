@@ -8,6 +8,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from contextvars import copy_context
+from importlib.metadata import version
 import json
 import os
 from pathlib import Path
@@ -135,7 +136,7 @@ def constrain_tools(tools: Sequence[BaseTool]) -> dict[str, BaseTool]:
     if len(names) != len(READ_ONLY_TOOLS) or set(names) != set(READ_ONLY_TOOLS):
         raise WorkflowError(
             "MCP tool contract mismatch. Use the reviewed @agentdomain/mcp-server "
-            "0.11.0 build with all three canonical read-only tools."
+            f"{version('agentdomain-crewai')} build with all three canonical read-only tools."
         )
     by_name = {tool.name: tool for tool in tools}
     selected = {name: by_name[name] for name in READ_ONLY_TOOLS}

@@ -8,6 +8,7 @@ import { DOCS_ROOT, EXPECTED_DOCS } from '../scripts/validate-content.mjs';
 
 const root = join(DOCS_ROOT, '..', '..');
 const repository = 'https://github.com/0xmdrakib/AgentDomain';
+const canonicalRepository = 'https://github.com/Talvono/AgentDomain';
 const read = (path) => readFile(join(root, path), 'utf8');
 const packageReadmes = [
   'shared',
@@ -22,8 +23,14 @@ const packageReadmes = [
   'mcp-server/examples/autogen',
 ].map((directory) => `packages/${directory}/README.md`);
 const historicalRelease = 'https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0';
+const canonicalFiles = new Set([
+  'README.md',
+  'CONTRIBUTING.md',
+  ...packageReadmes.filter((file) => !file.includes('/examples/')),
+]);
 
-test('public npm and Python manifests use GitHub without changing released versions', async () => {
+test('public npm and Python manifests use the canonical source and coordinated workspace version', async () => {
+  const { version } = JSON.parse(await read('packages/shared/package.json'));
   for (const directory of [
     'shared',
     'sdk',
@@ -33,20 +40,22 @@ test('public npm and Python manifests use GitHub without changing released versi
     'langchain-plugin',
   ]) {
     const manifest = JSON.parse(await read(`packages/${directory}/package.json`));
-    assert.equal(manifest.version, '0.11.0');
-    assert.equal(manifest.repository.url, `git+${repository}.git`);
+    assert.equal(manifest.version, version);
+    assert.equal(manifest.repository.url, `git+${canonicalRepository}.git`);
     assert.equal(manifest.repository.directory, `packages/${directory}`);
-    assert.equal(manifest.bugs.url, `${repository}/issues`);
+    assert.equal(manifest.bugs.url, `${canonicalRepository}/issues`);
     assert.equal(manifest.license, 'Apache-2.0');
   }
   for (const directory of ['crewai-plugin', 'autogen-plugin']) {
     const { project } = parseToml(await read(`packages/${directory}/pyproject.toml`));
-    assert.equal(project.version, '0.11.0');
+    assert.equal(project.version, version);
     assert.equal(
       project.urls.Repository,
-      directory === 'autogen-plugin' ? `${repository}/tree/main/packages/${directory}` : repository,
+      directory === 'autogen-plugin'
+        ? `${canonicalRepository}/tree/main/packages/${directory}`
+        : canonicalRepository,
     );
-    assert.equal(project.urls.Issues, `${repository}/issues`);
+    assert.equal(project.urls.Issues, `${canonicalRepository}/issues`);
     assert.equal(project.license, 'Apache-2.0');
   }
   const contracts = JSON.parse(await read('contracts/package.json'));
@@ -97,8 +106,8 @@ test('generated machine documents share GitHub source and native package/license
 test('contribution links and release verification use GitHub', async () => {
   const readme = await read('README.md');
   const contributing = await read('CONTRIBUTING.md');
-  assert.ok(readme.includes(`[GitHub](${repository})`));
-  assert.ok(contributing.includes(`[public GitHub repository](${repository}/pulls)`));
+  assert.ok(readme.includes(`[GitHub](${canonicalRepository})`));
+  assert.ok(contributing.includes(`[public GitHub repository](${canonicalRepository}/pulls)`));
   assert.match(contributing, /Require GitHub's\s+`verification\.verified: true`/);
   assert.doesNotMatch(contributing, /gitlab-signed-registry-v1|GitLab hosts current development/);
   assert.ok(readme.includes('https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0'));
@@ -138,7 +147,9 @@ test('public guides use GitHub-native source links and preserve historical refer
   ]) {
     const source = await read(file);
     const links = [
-      ...new Set(source.match(/https:\/\/github\.com\/0xmdrakib\/AgentDomain[^\s)<>"'`]*/g)),
+      ...new Set(
+        source.match(/https:\/\/github\.com\/(?:0xmdrakib|Talvono)\/AgentDomain[^\s)<>"'`]*/g),
+      ),
     ];
     for (const target of historical.get(file) ?? []) {
       assert.ok(links.includes(target), `${file}: missing historical reference ${target}`);
@@ -146,11 +157,20 @@ test('public guides use GitHub-native source links and preserve historical refer
     assert.doesNotMatch(source, /https:\/\/gitlab\.com\/agentdomain\/AgentDomain/, file);
     for (const target of links) {
       if ((historical.get(file) ?? []).includes(target)) continue;
+      if (canonicalFiles.has(file))
+        assert.ok(
+          target === canonicalRepository ||
+            target.startsWith(`${canonicalRepository}/`) ||
+            target === `${canonicalRepository}.git`,
+          `${file}: nonhistorical source link must use Talvono: ${target}`,
+        );
       const { pathname } = new URL(target);
-      const suffix = pathname.slice('/0xmdrakib/AgentDomain'.length);
+      const suffix = pathname.replace(/^\/(?:0xmdrakib|Talvono)\/AgentDomain/, '');
       if (
         !suffix ||
-        /^(?:\.git|\/issues(?:\/new)?|\/pulls|\/security\/(?:policy|advisories\/new))$/.test(suffix)
+        /^(?:\.git|\/issues(?:\/new)?|\/pulls|\/releases\/latest|\/security\/(?:policy|advisories\/new))$/.test(
+          suffix,
+        )
       )
         continue;
       const path = /^\/(tree|blob|edit)\/main\/(.+)$/.exec(suffix);

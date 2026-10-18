@@ -22,7 +22,7 @@ from pydantic import (
     model_validator,
 )
 
-MCP_NPM_VERSION = "0.11.0"
+MCP_NPM_VERSION = version("agentdomain-autogen")
 TOOL_NAMES = frozenset(
     ("inspect_agent_identity", "inspect_agent_renewal", "prepare_auto_renew_change")
 )
@@ -264,7 +264,7 @@ async def inspect_and_prepare(
     available = {tool["name"] for tool in await workbench.list_tools()}
     if not required.issubset(available):
         raise RuntimeError(
-            "Required tools are missing. Install MCP 0.11.0 after publication "
+            f"Required tools are missing. Install MCP {MCP_NPM_VERSION} after publication "
             "or build the reviewed public source."
         )
     identity = result_json(await workbench.call_tool("inspect_agent_identity", request))

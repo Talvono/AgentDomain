@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agentdomain-crewai"
-version = "0.11.0"
+version = "0.11.1"
 description = "Read-only native CrewAI tools for the AgentDomain MCP server"
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -24,8 +24,8 @@ dependencies = ["crewai==1.15.21", "mcp==1.28.1"]
 
 [project.urls]
 Homepage = "https://agentdomain.app"
-Repository = "https://github.com/0xmdrakib/AgentDomain"
-Issues = "https://github.com/0xmdrakib/AgentDomain/issues"
+Repository = "https://github.com/Talvono/AgentDomain"
+Issues = "https://github.com/Talvono/AgentDomain/issues"
 
 [project.scripts]
 agentdomain-crewai = "agentdomain_crewai.connector:main"

@@ -5,28 +5,26 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
-import {
-  PACKAGES,
-  VERSION,
-  releaseRows,
-  publishEnvironment,
-  publishRelease,
-} from './npm-release.mjs';
+import { PACKAGES, releaseRows, publishEnvironment, publishRelease } from './npm-release.mjs';
 import { postbuildLanes } from './public-ci-postbuild.mjs';
+import { RELEASE_POLICY } from './public-release-identity.mjs';
 
-const rows =
+const VERSION = '0.11.0';
+const rowsFor = (version = VERSION) =>
   PACKAGES.map(
-    (name) => `@agentdomain/${name}\t${VERSION}\tpackages/agentdomain-${name}-${VERSION}.tgz`,
+    (name) => `@agentdomain/${name}\t${version}\tpackages/agentdomain-${name}-${version}.tgz`,
   ).join('\n') + '\n';
+const rows = rowsFor();
+const owner = RELEASE_POLICY.activeOwner;
 const env = {
-  GITHUB_REPOSITORY: '0xmdrakib/AgentDomain',
+  GITHUB_REPOSITORY: `${owner}/AgentDomain`,
   GITHUB_REPOSITORY_ID: '1310051881',
-  GITHUB_REPOSITORY_OWNER: '0xmdrakib',
-  GITHUB_REPOSITORY_OWNER_ID: '113634586',
+  GITHUB_REPOSITORY_OWNER: owner,
+  GITHUB_REPOSITORY_OWNER_ID: RELEASE_POLICY.owners[owner],
   GITHUB_ACTOR: '0xmdrakib',
   GITHUB_ACTOR_ID: '113634586',
   GITHUB_TRIGGERING_ACTOR: '0xmdrakib',
-  GITHUB_WORKFLOW_REF: '0xmdrakib/AgentDomain/.github/workflows/publish-npm.yml@refs/heads/main',
+  GITHUB_WORKFLOW_REF: `${owner}/AgentDomain/.github/workflows/publish-npm.yml@refs/heads/main`,
   GITHUB_SHA: 'a'.repeat(40),
   GITHUB_REF: 'refs/heads/main',
   NODE_AUTH_TOKEN: 'old',
@@ -34,12 +32,13 @@ const env = {
   ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'oidc-test',
   ACTIONS_ID_TOKEN_REQUEST_URL: 'https://oidc.actions.githubusercontent.com/test',
 };
-function fixture(t) {
+function fixture(t, version = VERSION) {
   const root = mkdtempSync(join(tmpdir(), 'agentdomain-release-test-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   mkdirSync(join(root, 'packages'));
-  writeFileSync(join(root, 'publish-order.tsv'), rows);
-  for (const [, , file] of releaseRows(rows)) writeFileSync(join(root, file), 'immutable');
+  const input = rowsFor(version);
+  writeFileSync(join(root, 'publish-order.tsv'), input);
+  for (const [, , file] of releaseRows(input)) writeFileSync(join(root, file), 'immutable');
   return root;
 }
 
@@ -47,27 +46,38 @@ test('six exact names, versions, order and safe paths only', () => {
   assert.equal(releaseRows(rows).length, 6);
   for (const bad of [
     rows.replace('/sdk\t', '/other\t'),
-    rows.replaceAll('0.11.0', '0.11.1'),
+    rows.replace('0.11.0', '0.11.1'),
     rows + rows,
     rows.replace('packages/agentdomain-shared', '../agentdomain-shared'),
     rows.replaceAll('\t', ' '),
   ])
     assert.throws(() => releaseRows(bad), /NPM_RELEASE_REFUSED/);
+  assert.equal(releaseRows(rowsFor('0.12.0'))[0][1], '0.12.0');
+  for (const version of ['01.2.3', '1.2.3-beta.1', '1.2.3+build', '1.2', '../1.2.3', '1.2.3\r'])
+    assert.throws(() => releaseRows(rowsFor(version)), /NPM_RELEASE_REFUSED/);
 });
 test('every publication strips ambient credentials and preserves only OIDC transport', () => {
-  const ordinary = publishEnvironment(env, '@agentdomain/sdk', VERSION, undefined, false);
+  const ordinary = publishEnvironment({
+    ...env,
+    ACTIONS_ID_TOKEN_EXTRA_SECRET: 'forbidden',
+    NPM_CONFIG__AUTH: 'forbidden',
+    NPM_CONFIG_PASSWORD: 'forbidden',
+  });
   assert.equal(ordinary.NPM_BOOTSTRAP_TOKEN, undefined);
   assert.equal(ordinary.NODE_AUTH_TOKEN, undefined);
   assert.equal(ordinary.ACTIONS_ID_TOKEN_REQUEST_TOKEN, 'oidc-test');
+  assert.equal(ordinary.ACTIONS_ID_TOKEN_EXTRA_SECRET, undefined);
+  assert.equal(ordinary.NPM_CONFIG__AUTH, undefined);
+  assert.equal(ordinary.NPM_CONFIG_PASSWORD, undefined);
   const boot = publishEnvironment(env, '@agentdomain/langchain-plugin', VERSION, 'test-only', true);
   assert.equal(boot.NODE_AUTH_TOKEN, undefined);
   assert.equal(boot.NPM_CONFIG_IGNORE_SCRIPTS, 'true');
   assert.equal(boot.NPM_CONFIG_FETCH_RETRIES, '0');
 });
-test('five OIDC children receive no bootstrap token, even if caller mistakenly supplied one', async (t) => {
+test('six OIDC children publish a new coordinated version without static tokens', async (t) => {
   const calls = [];
   await publishRelease({
-    root: fixture(t),
+    root: fixture(t, '0.12.0'),
     npmCli: '/verified/npm-cli.js',
     mode: 'oidc',
     env,
@@ -78,39 +88,43 @@ test('five OIDC children receive no bootstrap token, even if caller mistakenly s
       return 0;
     },
   });
-  assert.equal(calls.length, 5);
+  assert.equal(calls.length, 6);
   for (const [, args, childEnv] of calls) {
     assert(args.includes('--ignore-scripts'));
     assert(args.includes('--provenance'));
+    assert(args.some((arg) => arg.endsWith('-0.12.0.tgz')));
     assert.equal(childEnv.NODE_AUTH_TOKEN, undefined);
     assert.equal(childEnv.NPM_BOOTSTRAP_TOKEN, undefined);
   }
 });
-test('LangChain missing-project publication has no static-token fallback', async (t) => {
+test('obsolete bootstrap selector fails before registry access or publication', async (t) => {
   const calls = [];
-  await publishRelease({
-    root: fixture(t),
-    npmCli: '/verified/npm-cli.js',
-    mode: 'bootstrap',
-    env,
-    token: 'test-only',
-    lookup: async () => ({ status: 404 }),
-    run: async (...call) => {
-      calls.push(call);
-      return 0;
-    },
-  });
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0][2].NODE_AUTH_TOKEN, undefined);
-  assert(!calls[0][1].join(' ').includes('test-only'));
+  await assert.rejects(
+    publishRelease({
+      root: fixture(t),
+      npmCli: '/verified/npm-cli.js',
+      mode: 'bootstrap',
+      env,
+      token: 'test-only',
+      lookup: async () => {
+        throw Error('must not lookup');
+      },
+      run: async (...call) => {
+        calls.push(call);
+        return 0;
+      },
+    }),
+    /NPM_RELEASE_REFUSED/,
+  );
+  assert.equal(calls.length, 0);
 });
-test('existing project or absent optional token uses OIDC without bootstrap', async (t) => {
+test('an optional token never changes the six-package OIDC lane', async (t) => {
   for (const token of ['test-only', undefined]) {
     const calls = [];
     await publishRelease({
       root: fixture(t),
       npmCli: '/verified/npm-cli.js',
-      mode: 'bootstrap',
+      mode: 'oidc',
       env,
       token,
       lookup: async (path) => ({ status: path.endsWith(VERSION) ? 404 : 200 }),
@@ -119,9 +133,88 @@ test('existing project or absent optional token uses OIDC without bootstrap', as
         return 0;
       },
     });
-    assert.equal(calls.length, 1);
+    assert.equal(calls.length, 6);
     assert.equal(calls[0][2].NODE_AUTH_TOKEN, undefined);
   }
+});
+test('whole-set preflight rejects late lookup errors, conflicts and partial existing versions before any write', async (t) => {
+  const integrity = `sha512-${createHash('sha512').update('immutable').digest('base64')}`;
+  for (const status of [200, 401, 403, 429, 500]) {
+    const lookedUp = [];
+    let publications = 0;
+    await assert.rejects(
+      publishRelease({
+        root: fixture(t),
+        npmCli: 'never-executed',
+        env,
+        lookup: async (path) => {
+          lookedUp.push(path);
+          return path.includes('langchain-plugin')
+            ? {
+                status,
+                body: {
+                  name: '@agentdomain/langchain-plugin',
+                  version: VERSION,
+                  dist: { integrity },
+                },
+              }
+            : { status: 404 };
+        },
+        run: () => {
+          publications++;
+          return 0;
+        },
+      }),
+    );
+    assert.equal(lookedUp.length, 6);
+    assert.equal(publications, 0);
+  }
+  const root = fixture(t);
+  let publications = 0;
+  await assert.rejects(
+    publishRelease({
+      root,
+      npmCli: 'never-executed',
+      env,
+      lookup: async (path) =>
+        path.includes('langchain-plugin')
+          ? {
+              status: 200,
+              body: {
+                name: '@agentdomain/langchain-plugin',
+                version: VERSION,
+                dist: { integrity: 'sha512-conflict' },
+              },
+            }
+          : { status: 404 },
+      run: () => {
+        publications++;
+        return 0;
+      },
+    }),
+  );
+  assert.equal(publications, 0);
+});
+test('all six lookups finish before first publish and failed publication is never retried', async (t) => {
+  let lookups = 0;
+  let publications = 0;
+  await assert.rejects(
+    publishRelease({
+      root: fixture(t),
+      npmCli: 'never-executed',
+      env,
+      lookup: async () => {
+        lookups++;
+        return { status: 404 };
+      },
+      run: () => {
+        assert.equal(lookups, 6);
+        publications++;
+        return publications === 2 ? 1 : 0;
+      },
+    }),
+  );
+  assert.equal(publications, 2);
 });
 test('network/auth errors fail closed and unknown publish is not retried', async (t) => {
   for (const status of [401, 403, 429, 500]) {
@@ -157,25 +250,36 @@ test('network/auth errors fail closed and unknown publish is not retried', async
   );
   assert.equal(calls, 1);
 });
-test('already published artifact must match exact immutable integrity', async (t) => {
+test('matching existing artifacts fail closed without signed source/workflow provenance', async (t) => {
   const root = fixture(t);
   const integrity = `sha512-${createHash('sha512').update('immutable').digest('base64')}`;
-  const lookup = async () => ({
+  const lookup = async (path) => ({
     status: 200,
-    body: { name: '@agentdomain/langchain-plugin', version: VERSION, dist: { integrity } },
-  });
-  await publishRelease({
-    root,
-    npmCli: 'npm',
-    mode: 'bootstrap',
-    env,
-    lookup,
-    run: () => {
-      throw Error('must not publish');
+    body: {
+      name: decodeURIComponent(path.split('/')[0]),
+      version: VERSION,
+      gitHead: env.GITHUB_SHA,
+      dist: { integrity },
     },
   });
+  await assert.rejects(
+    publishRelease({
+      root,
+      npmCli: 'npm',
+      mode: 'oidc',
+      env,
+      lookup,
+      run: () => {
+        throw Error('must not publish');
+      },
+    }),
+    /EXISTING_PROVENANCE_UNQUALIFIED/,
+  );
   writeFileSync(join(root, `packages/agentdomain-langchain-plugin-${VERSION}.tgz`), 'changed');
-  await assert.rejects(publishRelease({ root, npmCli: 'npm', mode: 'bootstrap', env, lookup }));
+  await assert.rejects(
+    publishRelease({ root, npmCli: 'npm', mode: 'oidc', env, lookup }),
+    /NPM_RELEASE_REFUSED/,
+  );
 });
 test('wrong source context refuses before lookup', async (t) => {
   for (const patch of [
@@ -188,17 +292,18 @@ test('wrong source context refuses before lookup', async (t) => {
     { ACTIONS_ID_TOKEN_REQUEST_TOKEN: '' },
     { ACTIONS_ID_TOKEN_REQUEST_URL: '' },
     {
-      GITHUB_REPOSITORY: 'Talvono/AgentDomain',
-      GITHUB_REPOSITORY_OWNER: 'Talvono',
-      GITHUB_REPOSITORY_OWNER_ID: '342912183',
-      GITHUB_WORKFLOW_REF: 'Talvono/AgentDomain/.github/workflows/publish-npm.yml@refs/heads/main',
-      ACTIVE_RELEASE_OWNER: 'Talvono',
+      GITHUB_REPOSITORY: `${owner === 'Talvono' ? '0xmdrakib' : 'Talvono'}/AgentDomain`,
+      GITHUB_REPOSITORY_OWNER: owner === 'Talvono' ? '0xmdrakib' : 'Talvono',
+      GITHUB_REPOSITORY_OWNER_ID:
+        RELEASE_POLICY.owners[owner === 'Talvono' ? '0xmdrakib' : 'Talvono'],
+      GITHUB_WORKFLOW_REF: `${owner === 'Talvono' ? '0xmdrakib' : 'Talvono'}/AgentDomain/.github/workflows/publish-npm.yml@refs/heads/main`,
+      ACTIVE_RELEASE_OWNER: owner === 'Talvono' ? '0xmdrakib' : 'Talvono',
     },
   ]) {
     await assert.rejects(
       publishRelease({
         root: fixture(t),
-        mode: 'bootstrap',
+        mode: 'oidc',
         env: { ...env, ...patch },
         lookup: () => {
           throw Error('must not lookup');
@@ -214,9 +319,10 @@ test('reviewed policy flip refuses old-owner publication before registry lookup'
   for (const file of ['npm-release.mjs', 'public-release-identity.mjs'])
     writeFileSync(join(root, file), readFileSync(new URL(`./${file}`, import.meta.url)));
   const policy = JSON.parse(readFileSync(new URL('./public-release-policy.json', import.meta.url)));
+  const nextOwner = owner === 'Talvono' ? '0xmdrakib' : 'Talvono';
   writeFileSync(
     join(root, 'public-release-policy.json'),
-    JSON.stringify({ ...policy, activeOwner: 'Talvono' }),
+    JSON.stringify({ ...policy, activeOwner: nextOwner }),
   );
   const flipped = await import(pathToFileURL(join(root, 'npm-release.mjs')).href);
   let lookups = 0;
@@ -234,10 +340,10 @@ test('reviewed policy flip refuses old-owner publication before registry lookup'
   assert.equal(lookups, 0);
   const future = {
     ...env,
-    GITHUB_REPOSITORY: 'Talvono/AgentDomain',
-    GITHUB_REPOSITORY_OWNER: 'Talvono',
-    GITHUB_REPOSITORY_OWNER_ID: '342912183',
-    GITHUB_WORKFLOW_REF: 'Talvono/AgentDomain/.github/workflows/publish-npm.yml@refs/heads/main',
+    GITHUB_REPOSITORY: `${nextOwner}/AgentDomain`,
+    GITHUB_REPOSITORY_OWNER: nextOwner,
+    GITHUB_REPOSITORY_OWNER_ID: policy.owners[nextOwner],
+    GITHUB_WORKFLOW_REF: `${nextOwner}/AgentDomain/.github/workflows/publish-npm.yml@refs/heads/main`,
   };
   let publications = 0;
   await flipped.publishRelease({
@@ -251,7 +357,7 @@ test('reviewed policy flip refuses old-owner publication before registry lookup'
       return 0;
     },
   });
-  assert.equal(publications, 5);
+  assert.equal(publications, 6);
   assert.equal(flipped.publishEnvironment(future).NODE_AUTH_TOKEN, undefined);
 });
 test('both publishing workflows have no static-token fallback', () => {
@@ -280,10 +386,10 @@ test('npm stages the trusted identity helper and policy inside the sealed input 
   );
   assert.match(
     workflow,
-    /for script in npm-release\.mjs release-artifacts\.py public-release-identity\.mjs public-release-policy\.json; do/,
+    /for script in npm-release\.mjs release-artifacts\.py public-release-identity\.mjs public-release-policy\.json verify-release-ci\.mjs; do/,
   );
-  assert.match(workflow, /test "\$\(wc -l < "\$checksums"\)" -eq 12/);
-  assert.match(workflow, /test "\$\(wc -l < "\$release_dir\/release\.sha256"\)" -eq 12/);
+  assert.match(workflow, /test "\$\(wc -l < "\$checksums"\)" -eq 13/);
+  assert.match(workflow, /test "\$\(wc -l < "\$release_dir\/release\.sha256"\)" -eq 13/);
   const publish = workflow.split('\n  publish:')[1];
   assert.ok(
     publish.indexOf('sha256sum --check --strict release.sha256') <
@@ -295,21 +401,15 @@ test('npm stages the trusted identity helper and policy inside the sealed input 
   );
 });
 
-test('Python project choice never narrows validation or native integration tests', () => {
+test('automatic Python releases never narrow validation or native integration tests', () => {
   const workflow = readFileSync(
     new URL('../.github/workflows/publish-python.yml', import.meta.url),
     'utf8',
   ).replaceAll('\r\n', '\n');
-  assert.match(workflow, /^on:\n  workflow_dispatch:\n    inputs:\n      project:\n/m);
-  const choice = workflow.match(/^      project:\n((?: {8}.+\n)+)/m)?.[1];
-  assert.equal(typeof choice, 'string');
-  assert.match(choice, /^        required: true$/m);
-  assert.match(choice, /^        type: choice$/m);
-  assert.match(choice, /^        default: all$/m);
-  assert.deepEqual(
-    [...choice.matchAll(/^          - (.+)$/gm)].map((match) => match[1]),
-    ['all', 'agentdomain-crewai', 'agentdomain-autogen'],
-  );
+  assert.match(workflow, /^on:\n  workflow_run:/m);
+  assert.doesNotMatch(workflow, /workflow_dispatch|inputs\.project|PROJECT_TO_PUBLISH/);
+  assert.match(workflow, /needs\.plan\.outputs\.release-needed == 'true'/);
+  assert.match(workflow, /RELEASE_VERSION: \$\{\{ needs\.plan\.outputs\.version \}\}/);
 
   const validation = workflow.split('\n  validate:\n')[1].split('\n  publish:\n')[0];
   assert.doesNotMatch(validation, /inputs\.project|PROJECT_TO_PUBLISH|--project/);
@@ -352,9 +452,12 @@ test('Python publishing stages a fixed verified subset before the pinned OIDC ac
   }
   assert.match(publish, /needs\.validate\.outputs\.publication-authorized == 'true'/);
   assert.match(workflow, /^concurrency:\n  group: publish-python\n  cancel-in-progress: false$/m);
-  assert.match(publish, /^    needs: validate$/m);
+  assert.match(publish, /^    needs: \[plan, validate\]$/m);
   assert.match(publish, /^    environment:\n      name: pypi-production$/m);
-  assert.match(publish, /^    permissions:\n      contents: read\n      id-token: write$/m);
+  assert.match(
+    publish,
+    /^    permissions:\n      contents: read\n      actions: read\n      id-token: write$/m,
+  );
   assert.match(
     publish,
     /EXPECTED_RELEASE_MANIFEST_SHA256: \$\{\{ needs\.validate\.outputs\.release-manifest-sha256 \}\}/,
@@ -373,11 +476,10 @@ test('Python publishing stages a fixed verified subset before the pinned OIDC ac
     publish.indexOf('release-inputs/public-release-policy.json') <
       publish.indexOf('stage-python --output'),
   );
-  assert.match(publish, /^          PROJECT_TO_PUBLISH: \$\{\{ inputs\.project \}\}$/m);
-  assert.equal(workflow.split('${{ inputs.project }}').length - 1, 1);
+  assert.doesNotMatch(publish, /PROJECT_TO_PUBLISH|inputs\.project/);
 
   const command =
-    'python -B release-inputs/verifier.py stage-python --output release-inputs --project "$PROJECT_TO_PUBLISH"';
+    'python -B release-inputs/verifier.py stage-python --output release-inputs --project all';
   const steps = publish.split('\n      - ').slice(1);
   const stage = steps.find((step) => step.includes(command));
   assert.equal(typeof stage, 'string');
@@ -390,7 +492,8 @@ test('Python publishing stages a fixed verified subset before the pinned OIDC ac
     'printf \'%s  release-inputs/verifier.py\\n\' "$EXPECTED_VERIFIER_SHA256" | sha256sum --check --status',
   );
   assert.ok(hashCheck >= 0 && script.indexOf(command) > hashCheck);
-  assert.equal(steps.indexOf(stage), steps.length - 2);
+  assert.equal(steps.indexOf(stage), steps.length - 3);
+  assert.match(steps.at(-2), /run: node release-inputs\/qualification\.mjs --github/);
   const upload = steps.at(-1);
   assert.match(
     upload,
@@ -400,11 +503,14 @@ test('Python publishing stages a fixed verified subset before the pinned OIDC ac
   assert.match(upload, /^          attestations: true$/m);
   assert.match(upload, /^          skip-existing: false$/m);
   assert.match(upload, /^          print-hash: true$/m);
+  assert.match(upload, /^        if: steps\.stage\.outputs\.publish-needed == 'true'$/m);
   assert.doesNotMatch(publish, /actions\/checkout|build-python|pip install|secrets\.|password:/);
-  assert.doesNotMatch(publish, /^ {6,}(?:if|continue-on-error):/m);
+  assert.doesNotMatch(publish, /continue-on-error:/);
+  assert.equal((publish.match(/^        if:/gm) ?? []).length, 1);
 });
 
 function assertNativeInstallOrder(source) {
+  source = source.replaceAll('${RELEASE_VERSION}', '$RELEASE_VERSION');
   assert(!source.includes('-r packages/mcp-server/examples/autogen/requirements.txt'));
   for (const [name, packageTest, nativeTest] of [
     [
@@ -419,7 +525,7 @@ function assertNativeInstallOrder(source) {
     ],
   ]) {
     const dependency = `-r packages/mcp-server/examples/${name}/${name === 'crewai' ? 'requirements.lock' : 'framework-requirements.txt'}`;
-    const wheel = `--no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_${name}-${VERSION}-py3-none-any.whl"`;
+    const wheel = `--no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_${name}-$RELEASE_VERSION-py3-none-any.whl"`;
     const start = source.indexOf(dependency);
     const end = source.indexOf(nativeTest);
     assert.ok(start >= 0 && end > start, `${name}: dependencies and native check required`);
@@ -481,7 +587,8 @@ test('first Python release installs framework dependencies before forcibly insta
 });
 
 test('both native qualification paths reject missing or reordered framework, wheel and runtime checks', () => {
-  for (const source of nativeInstallSources()) {
+  for (let source of nativeInstallSources()) {
+    source = source.replaceAll('${RELEASE_VERSION}', '$RELEASE_VERSION');
     for (const command of [
       'crewai/requirements.lock',
       'autogen/framework-requirements.txt',
@@ -496,7 +603,8 @@ test('both native qualification paths reject missing or reordered framework, whe
     ])
       assert.throws(() => assertNativeInstallOrder(source.replaceAll(command, '')));
     const dependency = '-r packages/mcp-server/examples/autogen/framework-requirements.txt';
-    const wheel = `--no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-${VERSION}-py3-none-any.whl"`;
+    const wheel =
+      '--no-deps --no-index --force-reinstall "$RUNNER_TEMP/python-release/dist/agentdomain_autogen-$RELEASE_VERSION-py3-none-any.whl"';
     const reordered = source
       .replace(dependency, 'DEPENDENCY_PLACEHOLDER')
       .replace(wheel, dependency)

@@ -5,7 +5,7 @@ AgentDomain's Node.js MCP server. It returns official CrewAI `MCPNativeTool`
 objects with strict typed inputs. It uses CrewAI's native `MCPClient` and
 `StdioTransport`, not `crewai-tools` or `mcpadapt`.
 
-Version **0.11.0** requires Python **3.12**
+Version **0.11.1** requires Python **3.12**
 and Node.js **20 or later**. The Python package does not bundle or
 automatically download Node.js, the MCP server, a model, or wallet credentials.
 
@@ -16,14 +16,14 @@ Install the matching Python integration and Node MCP server:
 
 ```sh
 python3.12 -m venv .venv
-.venv/bin/python -m pip install agentdomain-crewai==0.11.0
-npm install --save-exact @agentdomain/mcp-server@0.11.0
+.venv/bin/python -m pip install agentdomain-crewai==0.11.1
+npm install --save-exact @agentdomain/mcp-server@0.11.1
 ```
 
 On Windows use `py -3.12 -m venv .venv` and `.venv/Scripts/python.exe`.
 CrewAI 1.15.21 and the Python MCP SDK 1.28.1 are exact direct dependencies.
 For the fully pinned, hash-verified transitive environment, install
-[`requirements.lock`](https://github.com/0xmdrakib/AgentDomain/blob/main/packages/mcp-server/examples/crewai/requirements.lock)
+[`requirements.lock`](https://github.com/Talvono/AgentDomain/blob/main/packages/mcp-server/examples/crewai/requirements.lock)
 first, then the reviewed AgentDomain wheel with `--no-deps`, and run
 `python -m pip check`. The release's lock and wheel must come from the same
 reviewed source. Do not silently upgrade the dependency graph.
@@ -129,7 +129,7 @@ Hatchling 1.27.0 is the pinned build backend. Both artifacts use explicit file
 allowlists; no environment, tests, Node binary or vendored dependency is shipped.
 Install the wheel into a fresh environment with the reviewed hash lock, then
 run the installed-package and real-MCP tests documented in
-[`the thin example`](https://github.com/0xmdrakib/AgentDomain/blob/main/packages/mcp-server/examples/crewai/README.md).
+[`the thin example`](https://github.com/Talvono/AgentDomain/blob/main/packages/mcp-server/examples/crewai/README.md).
 
 Primary references: [CrewAI native MCP](https://docs.crewai.com/en/mcp/dsl-integration),
 [pinned native client](https://github.com/crewAIInc/crewAI/blob/1.15.21/lib/crewai/src/crewai/mcp/client.py),

@@ -22,7 +22,7 @@ there is no persisted validation receipt or environment-based skip flag.
 
 ## Pull requests
 
-Open pull requests in the [public GitHub repository](https://github.com/0xmdrakib/AgentDomain/pulls).
+Open pull requests in the [public GitHub repository](https://github.com/Talvono/AgentDomain/pulls).
 Keep each pull request focused and explain the public behavior it changes. Add
 or update tests and documentation when a public contract changes.
 
@@ -43,6 +43,25 @@ environment files untracked and committed examples value-free.
 
 Every authorized package version release includes the public tag and GitHub
 release. These are release deliverables, not optional follow-up work.
+
+Package releases start automatically after successful full Public CI for a
+reviewed version change on `Talvono/AgentDomain` main. Keep the six publishable
+npm package versions and both Python project versions aligned; the private root
+workspace version is unrelated. Update their current installation examples and
+compatibility metadata in the same pull request. An unchanged package version
+does not start release builds or republish immutable registry versions.
+
+The existing npm and Python publisher workflows use their dedicated production
+environments and OIDC, not account tokens or manual dispatch. Both bind to the
+exact successful main-push CI run, signed source, current main and checked
+artifacts. The completion workflow verifies both publication lanes and registry
+provenance before creating the matching immutable tag and GitHub release.
+The signed certificate binds source, workflow and run identity. PyPI environment
+selection is additionally checked against registry publisher metadata and the
+signed workflow configuration; it is not a certificate environment claim.
+Failed or uncertain publication stops without an automatic retry; reconcile
+the actual registry state before an explicitly reviewed recovery. Never move
+an existing tag or re-upload a published version as recovery.
 
 1. Validate the reviewed public source with `pnpm ci:public`, secret scanning,
    package checks and the successful release workflow for the exact source SHA.
