@@ -24,6 +24,26 @@ import {
 } from './public-release-identity.mjs';
 import { postbuildLanes } from './public-ci-postbuild.mjs';
 
+// Child fixtures inherit OS necessities, not the hosting workflow's identity or credentials.
+function fixtureEnvironment(overrides = {}, ambient = process.env) {
+  const allowed = new Set([
+    'path',
+    'systemroot',
+    'windir',
+    'home',
+    'userprofile',
+    'tmp',
+    'temp',
+    'tmpdir',
+  ]);
+  return {
+    ...Object.fromEntries(
+      Object.entries(ambient).filter(([key]) => allowed.has(key.toLowerCase())),
+    ),
+    ...overrides,
+  };
+}
+
 const context = {
   repository: '0xmdrakib/AgentDomain',
   repositoryId: '1310051881',
@@ -452,12 +472,11 @@ test('automatic CLI qualifies checkout-free sealed use and rejects manual publis
   const output = join(directory, 'output');
   await writeFile(eventPath, JSON.stringify(automaticEvent()));
   const filename = fileURLToPath(new URL('./verify-release-ci.mjs', import.meta.url));
-  const environment = {
-    ...process.env,
+  const environment = fixtureEnvironment({
     ...automaticEnvironment(eventPath),
     GITHUB_WORKSPACE: join(directory, 'checkout-does-not-exist'),
     GITHUB_OUTPUT: output,
-  };
+  });
   const result = spawnSync(process.execPath, [filename], {
     env: environment,
     input: JSON.stringify(automaticPayload()),
@@ -473,6 +492,97 @@ test('automatic CLI qualifies checkout-free sealed use and rejects manual publis
     const rejected = spawnSync(process.execPath, [filename], {
       env: { ...environment, GITHUB_EVENT_NAME: eventName, GITHUB_OUTPUT: rejectedOutput },
       input: JSON.stringify(automaticPayload()),
+      encoding: 'utf8',
+    });
+    assert.equal(rejected.status, 1);
+    assert.equal(rejected.stdout, '');
+    await assert.rejects(readFile(rejectedOutput), { code: 'ENOENT' });
+  }
+});
+
+test('CLI fixtures isolate ambient CI identity while real Actions events cannot fall back', async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), 'agentdomain-ambient-ci-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const eventPath = join(directory, 'allowed-event.json');
+  const hostilePath = join(directory, 'fork-event.json');
+  const ambientOutput = join(directory, 'ambient-output');
+  const output = join(directory, 'fixture-output');
+  const fork = automaticEvent();
+  fork.workflow_run.head_repository = {
+    ...automaticRepository,
+    full_name: 'foreign/AgentDomain',
+    id: 42,
+    owner: { login: 'foreign', id: 42 },
+  };
+  await writeFile(eventPath, JSON.stringify(automaticEvent()));
+  await writeFile(hostilePath, JSON.stringify(fork));
+  const ambient = {
+    ...fixtureEnvironment(),
+    CI: 'true',
+    GITHUB_ACTIONS: 'true',
+    GITHUB_EVENT_NAME: 'pull_request',
+    GITHUB_EVENT_PATH: hostilePath,
+    GITHUB_REPOSITORY: 'foreign/AgentDomain',
+    GITHUB_REPOSITORY_ID: '42',
+    GITHUB_REPOSITORY_OWNER: 'foreign',
+    GITHUB_REPOSITORY_OWNER_ID: '42',
+    GITHUB_ACTOR: 'foreign',
+    GITHUB_ACTOR_ID: '42',
+    GITHUB_TRIGGERING_ACTOR: 'foreign',
+    GITHUB_WORKFLOW_REF: 'foreign/AgentDomain/.github/workflows/publish-npm.yml@refs/pull/84/merge',
+    GITHUB_REF: 'refs/pull/84/merge',
+    GITHUB_SHA: 'b'.repeat(40),
+    GITHUB_OUTPUT: ambientOutput,
+    GH_TOKEN: 'ambient-credential-must-not-pass',
+    ACTIONS_ID_TOKEN_REQUEST_TOKEN: 'ambient-oidc-must-not-pass',
+    NODE_OPTIONS: '--ambient-node-option-must-not-pass',
+  };
+  const original = structuredClone(ambient);
+  const environment = fixtureEnvironment(
+    {
+      ...automaticEnvironment(eventPath),
+      GITHUB_OUTPUT: output,
+    },
+    ambient,
+  );
+  for (const key of ['CI', 'GH_TOKEN', 'ACTIONS_ID_TOKEN_REQUEST_TOKEN', 'NODE_OPTIONS'])
+    assert.equal(environment[key], undefined);
+  assert.equal(environment.GITHUB_EVENT_NAME, 'workflow_run');
+  assert.equal(environment.GITHUB_SHA, automaticContext.sha);
+  assert.equal(environment.GITHUB_OUTPUT, output);
+  assert.deepEqual(ambient, original);
+  assert.throws(() => releaseContext(ambient));
+  assert.doesNotThrow(() => releaseContext(environment));
+
+  const filename = fileURLToPath(new URL('./verify-release-ci.mjs', import.meta.url));
+  const input = JSON.stringify(automaticPayload());
+  const accepted = spawnSync(process.execPath, [filename], {
+    env: environment,
+    input,
+    encoding: 'utf8',
+  });
+  assert.equal(accepted.status, 0, accepted.stderr);
+  assert.equal(
+    await readFile(output, 'utf8'),
+    `publication-authorized=${RELEASE_POLICY.activeOwner === 'Talvono'}\n`,
+  );
+  await assert.rejects(readFile(ambientOutput), { code: 'ENOENT' });
+
+  for (const [index, patch] of [
+    { GITHUB_EVENT_NAME: 'pull_request' },
+    { GITHUB_EVENT_NAME: 'workflow_dispatch' },
+    { GITHUB_EVENT_NAME: undefined },
+    { GITHUB_EVENT_PATH: hostilePath },
+    { GITHUB_EVENT_PATH: undefined },
+    { GITHUB_SHA: 'b'.repeat(40) },
+  ].entries()) {
+    const rejectedOutput = join(directory, `rejected-${index}`);
+    const actions = { ...environment, ...patch, GITHUB_OUTPUT: rejectedOutput };
+    assert.equal(actions.GITHUB_ACTIONS, 'true');
+    assert.throws(() => releaseContext(actions));
+    const rejected = spawnSync(process.execPath, [filename], {
+      env: actions,
+      input,
       encoding: 'utf8',
     });
     assert.equal(rejected.status, 1);
@@ -764,7 +874,11 @@ test('only a trusted source-policy change switches publication authority', async
 test('CLI rejects malformed and oversized bodies without logging their contents', () => {
   const filename = fileURLToPath(new URL('./verify-release-ci.mjs', import.meta.url));
   for (const input of ['private-body-marker', 'x'.repeat(RELEASE_CI_LIMITS.maxBytes + 1)]) {
-    const result = spawnSync(process.execPath, [filename], { input, encoding: 'utf8' });
+    const result = spawnSync(process.execPath, [filename], {
+      env: fixtureEnvironment(),
+      input,
+      encoding: 'utf8',
+    });
     assert.equal(result.status, 1);
     assert.doesNotMatch(result.stderr, /private-body-marker|xxxxxxxx/);
     assert.equal(result.stdout, '');
@@ -784,8 +898,7 @@ test('CLI emits publication authority only after exact-source qualification', as
       owner: { login: owner, id: Number(ownerId) },
     };
     const output = join(directory, owner);
-    const environment = {
-      ...process.env,
+    const environment = fixtureEnvironment({
       GITHUB_REPOSITORY: repository,
       GITHUB_REPOSITORY_ID: '1310051881',
       GITHUB_REPOSITORY_OWNER: owner,
@@ -799,7 +912,7 @@ test('CLI emits publication authority only after exact-source qualification', as
       GITHUB_OUTPUT: output,
       ACTIVE_RELEASE_OWNER: 'Talvono',
       PUBLICATION_AUTHORIZED: 'true',
-    };
+    });
     const result = spawnSync(process.execPath, [filename], {
       env: environment,
       input: JSON.stringify(
