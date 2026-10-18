@@ -18,6 +18,7 @@ import {
   NPM_PACKAGES,
   PYTHON_PACKAGES,
   AUTOMATION_LIMITS,
+  READINESS_LIMITS,
   PROVENANCE_VERIFIER_PY,
 } from './public-release-automation.mjs';
 
@@ -149,6 +150,7 @@ function fixture(workflow = 'complete-public-release.yml') {
       { total_count: 1, workflow_runs: [ci] },
     ],
     [`repos/${repo.full_name}/releases?per_page=100`, []],
+    [`repos/${repo.full_name}/commits/main`, { sha }],
   ]);
   for (const [file, publisher] of [
     ['publish-npm.yml', npm],
@@ -205,6 +207,7 @@ function fixture(workflow = 'complete-public-release.yml') {
     context: ctx,
     source: async () => sourceState(),
     api,
+    registryJson: async (url) => readyVersionMetadata(url),
     bindSource: (_env, { sourceRun }) => {
       assert.deepEqual(sourceRun, ci);
       return { ...ctx, qualificationWorkflow: workflow };
@@ -359,16 +362,37 @@ for (const file of Object.keys(PUBLISHERS))
     assert.equal(f.verified, 0);
     assert.deepEqual(f.mutations, []);
   });
-test('changed completion plans only request the full verification path, without release authority', async () => {
+function readyVersionMetadata(url) {
+  const parsed = new URL(url);
+  if (parsed.origin === 'https://registry.npmjs.org') {
+    const slug = NPM_PACKAGES.find(
+      (slug) => parsed.pathname === `/${encodeURIComponent(`@agentdomain/${slug}`)}/${version}`,
+    );
+    assert(slug, 'Unexpected readiness fixture URL');
+    return { name: `@agentdomain/${slug}`, version };
+  }
+  assert.equal(parsed.origin, 'https://pypi.org');
+  const name = PYTHON_PACKAGES.find((name) => parsed.pathname === `/pypi/${name}/${version}/json`);
+  assert(name, 'Unexpected readiness fixture URL');
+  return { info: { name, version } };
+}
+test('changed completion plans qualify both actual lanes and public versions, without release authority', async () => {
   const f = fixture();
+  let reads = 0;
+  f.deps.registryJson = async (url) => {
+    reads++;
+    return readyVersionMetadata(url);
+  };
   assert.deepEqual(await planCompletion(f.deps), {
     'release-needed': 'true',
     version,
     'source-sha': sha,
+    reason: 'registry-ready',
   });
-  assert.deepEqual(f.calls, []);
+  assert.equal(reads, 8);
+  assert(f.calls.includes(`repos/${repo.full_name}/actions/runs/500`));
   assert.equal(f.verified, 0);
-  assert.equal(f.qualifications, 0);
+  assert.equal(f.qualifications, 1);
 });
 test('cheap completion plans reject unauthenticated events, wrong or dirty checkout and version regressions', async () => {
   const event = fixture();
@@ -395,6 +419,247 @@ test('cheap completion plans fail closed when the canonical all-eight version ch
   await assert.rejects(planCompletion(f.deps), /RELEASE_VERSION_MISMATCH/);
   assert.deepEqual(f.emitted, []);
   assert.deepEqual(f.calls, []);
+});
+function readinessFixture() {
+  const f = fixture(),
+    sleeps = [];
+  let elapsed = 0;
+  f.deps.now = () => elapsed;
+  f.deps.sleep = async (ms) => {
+    sleeps.push(ms);
+    elapsed += ms;
+  };
+  return {
+    ...f,
+    sleeps,
+    advance(ms) {
+      elapsed += ms;
+    },
+  };
+}
+test('readiness waits only for the missing version with the six-round adaptive schedule', async () => {
+  const f = readinessFixture(),
+    reads = new Map();
+  f.deps.registryJson = async (url, options) => {
+    assert.equal(options.optional, true);
+    assert.equal(options.requireObject, true);
+    assert(options.signal instanceof AbortSignal);
+    const count = (reads.get(url) ?? 0) + 1;
+    reads.set(url, count);
+    const name = readyVersionMetadata(url).name;
+    return name === '@agentdomain/agentkit-plugin' && count < 6 ? null : readyVersionMetadata(url);
+  };
+  assert.equal((await planCompletion(f.deps))['release-needed'], 'true');
+  assert.deepEqual(f.sleeps, READINESS_LIMITS.backoffMs);
+  assert.equal(
+    [...reads.values()].reduce((a, b) => a + b, 0),
+    13,
+  );
+  assert.equal([...reads.values()].filter((n) => n === 1).length, 7);
+  assert.equal(f.calls.filter((path) => path === `repos/${repo.full_name}/commits/main`).length, 6);
+  assert.deepEqual(f.mutations, []);
+});
+test('first publisher completion waits for the other actual lane without registry polling or sleeps', async () => {
+  const f = readinessFixture();
+  f.responses.set(
+    `repos/${repo.full_name}/actions/workflows/publish-python.yml/runs?branch=main&event=workflow_run&head_sha=${sha}&per_page=10`,
+    { total_count: 0, workflow_runs: [] },
+  );
+  f.deps.registryJson = async () => {
+    assert.fail('registry must not be polled');
+  };
+  const output = await planCompletion(f.deps);
+  assert.equal(output['release-needed'], 'false');
+  assert.equal(output.reason, 'waiting-for-other-publisher');
+  assert.deepEqual(f.sleeps, []);
+  assert.deepEqual(f.mutations, []);
+});
+test('skipped-green publication never starts readiness polling', async () => {
+  const f = readinessFixture();
+  f.responses.get(
+    `repos/${repo.full_name}/actions/runs/201/attempts/1/jobs?per_page=100`,
+  ).jobs[0].steps[0].conclusion = 'skipped';
+  f.deps.registryJson = async () => {
+    assert.fail('unqualified lane must not poll');
+  };
+  await assert.rejects(planCompletion(f.deps), /PUBLISH_STEP_NOT_EXECUTED/);
+  assert.deepEqual(f.sleeps, []);
+});
+test('readiness requires signed parent, full CI and exact own context before anonymous metadata reads', async () => {
+  for (const alter of [
+    (f) => {
+      f.responses.get(`repos/${repo.full_name}/commits/${parentSha}`).commit.verification.verified =
+        false;
+    },
+    (f) => {
+      f.deps.qualify = async () => {
+        throw new Error('RELEASE_CI_FULL_QUALIFICATION_REQUIRED');
+      };
+    },
+    (f) => {
+      f.responses.get(`repos/${repo.full_name}/actions/runs/500`).head_sha = parentSha;
+    },
+  ]) {
+    const f = readinessFixture();
+    alter(f);
+    f.deps.registryJson = async () => {
+      assert.fail('must qualify before polling');
+    };
+    await assert.rejects(planCompletion(f.deps));
+    assert.deepEqual(f.sleeps, []);
+    assert.deepEqual(f.mutations, []);
+  }
+});
+test('readiness aborts on main advancement between rounds before another registry sweep', async () => {
+  const f = readinessFixture();
+  let reads = 0;
+  f.deps.registryJson = async () => {
+    reads++;
+    return null;
+  };
+  f.responses.set(`repos/${repo.full_name}/commits/main`, { sha: parentSha });
+  await assert.rejects(planCompletion(f.deps), /MAIN_ADVANCED/);
+  assert.equal(reads, 8);
+  assert.deepEqual(f.sleeps, [30_000]);
+  assert.deepEqual(f.emitted, []);
+});
+test('readiness rejects main advancement during the final metadata response before emitting release-needed', async () => {
+  const f = readinessFixture();
+  let reads = 0;
+  f.deps.registryJson = async (url) => {
+    if (++reads === 8) f.responses.set(`repos/${repo.full_name}/commits/main`, { sha: parentSha });
+    return readyVersionMetadata(url);
+  };
+  f.deps.api = async (path, options) => {
+    if (path === `repos/${repo.full_name}/commits/main`)
+      assert(options.signal instanceof AbortSignal);
+    return f.api(path, options);
+  };
+  await assert.rejects(planCompletion(f.deps), /MAIN_ADVANCED/);
+  assert.equal(reads, 8);
+  assert.equal(f.calls.filter((path) => path === `repos/${repo.full_name}/commits/main`).length, 1);
+  assert.deepEqual(f.sleeps, []);
+  assert.deepEqual(f.emitted, []);
+  assert.deepEqual(f.mutations, []);
+});
+test('readiness 404 exhaustion is six rounds only and never retries publication', async () => {
+  const f = readinessFixture();
+  let reads = 0;
+  f.deps.registryJson = async () => {
+    reads++;
+    return null;
+  };
+  await assert.rejects(planCompletion(f.deps), /REGISTRY_NOT_READY/);
+  assert.equal(reads, 48);
+  assert.deepEqual(f.sleeps, READINESS_LIMITS.backoffMs);
+  assert.deepEqual(f.mutations, []);
+  assert.deepEqual(f.emitted, []);
+});
+test('readiness monotonic deadline stops slow reads and overslept timers without another request', async () => {
+  for (const duringRead of [true, false]) {
+    const f = readinessFixture();
+    let reads = 0;
+    f.deps.registryJson = async () => {
+      reads++;
+      if (duringRead) f.advance(READINESS_LIMITS.deadlineMs);
+      return null;
+    };
+    if (!duringRead) f.deps.sleep = async () => f.advance(READINESS_LIMITS.deadlineMs);
+    await assert.rejects(planCompletion(f.deps), /READINESS_DEADLINE/);
+    assert.equal(reads, duringRead ? 1 : 8);
+    assert(!f.calls.includes(`repos/${repo.full_name}/commits/main`));
+  }
+});
+test('readiness does not begin a backoff that cannot fit its remaining six-minute window', async () => {
+  const f = readinessFixture();
+  let reads = 0;
+  f.deps.registryJson = async (url) => {
+    if (++reads === 1) {
+      f.advance(READINESS_LIMITS.deadlineMs - 20_000);
+      return null;
+    }
+    return readyVersionMetadata(url);
+  };
+  await assert.rejects(planCompletion(f.deps), /READINESS_DEADLINE/);
+  assert.deepEqual(f.sleeps, []);
+});
+test('only expected metadata 404 is retried; other HTTP statuses and malformed 200 content fail immediately', async () => {
+  for (const [status, body] of [
+    [401, '{}'],
+    [403, '{}'],
+    [429, '{}'],
+    [500, '{}'],
+    [503, '{}'],
+    [200, 'null'],
+    [200, '[]'],
+    [200, '{'],
+    [200, '{"name":"wrong","version":"0.11.1"}'],
+  ]) {
+    const f = readinessFixture();
+    let requests = 0;
+    const t = createTransport({
+      fetcher: async () => {
+        requests++;
+        return new Response(body, { status });
+      },
+    });
+    f.deps.registryJson = t.json;
+    await assert.rejects(planCompletion(f.deps));
+    assert.equal(requests, 1);
+    assert.deepEqual(f.sleeps, []);
+  }
+});
+test('PyPI metadata version identity mismatch fails immediately without polling it again', async () => {
+  const f = readinessFixture();
+  let reads = 0;
+  f.deps.registryJson = async (url) => {
+    reads++;
+    const metadata = readyVersionMetadata(url);
+    if (metadata.info) metadata.info.version = '0.11.0';
+    return metadata;
+  };
+  await assert.rejects(planCompletion(f.deps), /REGISTRY_VERSION_IDENTITY/);
+  assert.equal(reads, 7);
+  assert.deepEqual(f.sleeps, []);
+});
+test('worst six-round readiness fits 74 native requests and sends no registry authentication', async () => {
+  const f = readinessFixture(),
+    reads = new Map();
+  let requests = 0;
+  for (let i = 0; i < 9; i++) f.responses.set(`fixtures/qualification/${i}`, {});
+  f.deps.qualify = async (_context, request) => {
+    for (let i = 0; i < 9; i++) await request(`fixtures/qualification/${i}`);
+    return ci.id;
+  };
+  const transport = createTransport({
+    token: 'github-read-token',
+    fetcher: async (url, options) => {
+      requests++;
+      assert.equal(options.method, 'GET');
+      const parsed = new URL(url);
+      if (parsed.origin === 'https://api.github.com')
+        return new Response(JSON.stringify(await f.api(parsed.pathname.slice(1) + parsed.search)));
+      assert.equal(options.headers.authorization, undefined);
+      const count = (reads.get(url) ?? 0) + 1;
+      reads.set(url, count);
+      return count < 6
+        ? new Response('{}', { status: 404 })
+        : new Response(JSON.stringify(readyVersionMetadata(url)));
+    },
+  });
+  f.deps.api = transport.api;
+  f.deps.registryJson = transport.json;
+  assert.equal((await planCompletion(f.deps))['release-needed'], 'true');
+  assert.equal(requests, 74);
+  assert.equal(reads.size, 8);
+  assert.deepEqual(f.mutations, []);
+});
+test('readiness hints do not bypass complete independent fresh qualification', async () => {
+  const f = readinessFixture();
+  assert.equal((await planCompletion(f.deps))['release-needed'], 'true');
+  f.responses.get(`repos/${repo.full_name}/actions/runs/500`).head_sha = parentSha;
+  await assert.rejects(finalizeRelease(f.deps), /RUN_IDENTITY/);
+  assert.deepEqual(f.mutations, []);
 });
 test('duplicate successful publication is a planner no-op without claiming registry qualification', async () => {
   const f = fixture('publish-npm.yml');
@@ -813,6 +1078,30 @@ test('native transport has one bounded request budget and only optional 404 mean
   );
   await assert.rejects(missing.json('https://pypi.org/pypi/example/json'), /REMOTE_STATUS/);
 });
+test('native transport applies the caller readiness abort cap without retry or parsing a late response', async () => {
+  const controller = new AbortController();
+  let calls = 0;
+  const t = createTransport({
+    fetcher: async (_url, options) => {
+      calls++;
+      assert(options.signal instanceof AbortSignal);
+      assert.notEqual(options.signal, controller.signal);
+      controller.abort(new Error('readiness cap reached'));
+      assert.equal(options.signal.aborted, true);
+      return new Response('{}');
+    },
+  });
+  await assert.rejects(
+    t.json('https://pypi.org/pypi/example/json', { signal: controller.signal }),
+    /readiness cap reached/,
+  );
+  assert.equal(calls, 1);
+  await assert.rejects(
+    t.json('https://pypi.org/pypi/example/json', { signal: controller.signal }),
+    /readiness cap reached/,
+  );
+  assert.equal(calls, 1);
+});
 test('raw bundle downloads enforce the four MiB native bound before parsing or verification', async () => {
   const t = createTransport({
     fetcher: async () => new Response(Buffer.alloc(AUTOMATION_LIMITS.jsonBytes + 1, 32)),
@@ -1002,23 +1291,26 @@ test('provenance wrapper uses official cryptographic verifiers and strict source
     ),
   );
 });
-test('finalizer checks versions before setup and gates both verifier installation and complete on the cheap result', () => {
+test('read-only eight-minute readiness job gates the independently qualified twenty-minute contents-write job', () => {
   const workflow = readFileSync(
     new URL('../.github/workflows/complete-public-release.yml', import.meta.url),
     'utf8',
   );
-  const steps = workflow.split(/\n      - /);
-  const precheck = steps.findIndex((step) => step.includes('id: completion-plan'));
-  const installer = steps.findIndex((step) =>
-    step.includes('name: Install isolated hash-pinned official provenance verifiers'),
-  );
-  const complete = steps.findIndex((step) => step.includes('id: complete\n'));
-  assert(precheck >= 0 && precheck < installer && installer < complete);
-  assert(steps[precheck].includes('node scripts/public-release-automation.mjs completion-plan'));
-  assert(!/pip install|python -m venv|npm pack|curl/.test(steps.slice(1, precheck).join('\n')));
-  const gate = "if: steps.completion-plan.outputs.release-needed == 'true'";
-  assert(steps[installer].includes(gate));
-  assert(steps[complete].includes(gate));
+  const [plan, complete] = workflow.split('\n  complete:\n');
+  assert(plan.includes('\n  plan:\n'));
+  assert(plan.includes('timeout-minutes: 8'));
+  assert(plan.includes('contents: read'));
+  assert(plan.includes('actions: read'));
+  assert(!plan.includes('contents: write'));
+  assert(plan.includes('node scripts/public-release-automation.mjs completion-plan'));
+  assert(!/pip install|python -m venv|npm pack |curl /.test(plan));
+  assert(complete.includes('needs: plan'));
+  assert(complete.includes("if: needs.plan.outputs.release-needed == 'true'"));
+  assert(complete.includes('timeout-minutes: 20'));
+  assert(complete.includes('contents: write'));
+  assert(complete.includes('actions: read'));
+  assert(complete.includes('node scripts/public-release-automation.mjs complete'));
+  assert(!complete.includes('steps.completion-plan'));
 });
 test('finalizer workflow has only contents write/actions read, pinned tools, no dispatch, registry OIDC or deploy', () => {
   const workflow = readFileSync(

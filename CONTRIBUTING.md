@@ -59,6 +59,10 @@ provenance before creating the matching immutable tag and GitHub release.
 The signed certificate binds source, workflow and run identity. PyPI environment
 selection is additionally checked against registry publisher metadata and the
 signed workflow configuration; it is not a certificate environment claim.
+Registry processing is handled by a bounded read-only readiness phase before
+verifier installation. It polls only versions still returning 404, never
+re-uploads packages or reruns repository checks. Visible metadata is a scheduling
+hint, not provenance: full artifact and signature verification still follows.
 Failed or uncertain publication stops without an automatic retry; reconcile
 the actual registry state before an explicitly reviewed recovery. Never move
 an existing tag or re-upload a published version as recovery.

@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  complete:
+  plan:
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.ref == 'refs/heads/main' && github.repository == 'Talvono/AgentDomain' &&
@@ -33,6 +33,36 @@ jobs:
       (github.event.workflow_run.path == '.github/workflows/publish-npm.yml' ||
       github.event.workflow_run.path == '.github/workflows/publish-python.yml')
     runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      release-needed: ${{ steps.completion-plan.outputs.release-needed }}
+      version: ${{ steps.completion-plan.outputs.version }}
+      reason: ${{ steps.completion-plan.outputs.reason }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22.23.2
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Qualify publication lanes and wait for public registry readiness
+        id: completion-plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/public-release-automation.mjs completion-plan
+  complete:
+    needs: plan
+    if: needs.plan.outputs.release-needed == 'true'
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: write
@@ -50,11 +80,7 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
-      - name: Skip unchanged versions before verifier installation
-        id: completion-plan
-        run: node scripts/public-release-automation.mjs completion-plan
       - name: Install isolated hash-pinned official provenance verifiers
-        if: steps.completion-plan.outputs.release-needed == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -66,7 +92,6 @@ jobs:
           tar -xzf "$RUNNER_TEMP/release-npm.tgz" -C "$RUNNER_TEMP/release-npm"
       - name: Verify both publications and finalize immutable release
         id: complete
-        if: steps.completion-plan.outputs.release-needed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           PUBLIC_RELEASE_NPM_CLI: ${{ runner.temp }}/release-npm/package/bin/npm-cli.js
