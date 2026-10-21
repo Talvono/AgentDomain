@@ -104,10 +104,7 @@ export function Footer() {
                 </a>
               </li>
               <li>
-                <a
-                  href="https://github.com/0xmdrakib/AgentDomain"
-                  className="hover:text-foreground"
-                >
+                <a href="https://github.com/Talvono/AgentDomain" className="hover:text-foreground">
                   GitHub
                 </a>
               </li>

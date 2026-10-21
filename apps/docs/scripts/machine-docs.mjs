@@ -20,7 +20,7 @@ import {
 import { API_BASE, DOCS_ORIGIN, buildOpenApi, publicOperations } from './public-api-contract.mjs';
 
 const defaultRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const publicRepo = 'https://github.com/0xmdrakib/AgentDomain';
+const publicRepo = 'https://github.com/Talvono/AgentDomain';
 export const MACHINE_FILES = {
   'llms-full.txt': 'text/plain; charset=utf-8',
   'openapi.json': 'application/json; charset=utf-8',

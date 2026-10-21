@@ -9,11 +9,11 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const originalManifestHashes = {
-  'apps/docs': '0a2e231a6a94cb56fa1de0434d96c9274cf07caabcf2258185bc6b2ffc444989',
+  'apps/docs': 'affc5a8989455a0f2400f738379438db630ed65d2e37f69768c5f930cfd406df',
   'apps/frontend': '6574377970745719e884691391304f83cce3baf69328718e27281f185e5858cf',
   'packages/shared': 'e69fa04cd6e5af8d5c147a92957ae16094be4eee8b50f0d80bd1f02e205ebceb',
   'packages/sdk': 'c38c0291fd3e1613741d622d84dcd2eab0124681c80f2163c7d08c78bbc8f072',
-  'packages/mcp-server': '0705ed17035867736bbd15d58d4fbc23cb16cd14be8b4eeaa0cb7e9aff911ec3',
+  'packages/mcp-server': 'd7525237600ab85a5038ecca43aff80c8e5ed7958ec3247dc0924eef11483d24',
   'packages/agentkit-plugin': '7704b0da406c7c02ed056145f1f103289b251a86797bbf889cd1f4a3418fe7ac',
   'packages/eliza-plugin': '2d09cd45c45300956b708636d2fb2fbe63171600089d05bb720dce328905e559',
   'packages/langchain-plugin': '3825deae0a3824b29438d99517591b5f5439aaf7f70f472cad3eb1b0d3ff8fc6',

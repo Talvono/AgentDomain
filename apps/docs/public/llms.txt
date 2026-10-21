@@ -22,7 +22,7 @@ agents, and permissioned autonomous workflows.
 - [OpenAPI](https://docs.agentdomain.app/openapi.json): Explicitly documented HTTP routes; partial schema coverage is marked.
 - [API index](https://docs.agentdomain.app/api-index.json): HTTP, SDK and MCP catalogs with source-derived package versions.
 - [Discovery](https://docs.agentdomain.app/.well-known/agentdomain.json): Project-defined machine-readable documentation discovery.
-- [GitHub](https://github.com/0xmdrakib/AgentDomain): Apache-2.0 public source and packages.
+- [GitHub](https://github.com/Talvono/AgentDomain): Apache-2.0 public source and packages.
 
 The public API base is `https://api.agentdomain.app/api/v1`.
 

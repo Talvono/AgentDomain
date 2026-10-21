@@ -65,7 +65,7 @@ test('footer publishes the exact product, identity, infrastructure, developer an
     { label: 'Documentation', href: 'https://docs.agentdomain.app' },
     { label: 'MCP integration', href: expectedMcpLink },
     { label: 'Coinbase AgentKit', href: 'https://docs.agentdomain.app/frameworks/agentkit/' },
-    { label: 'GitHub', href: 'https://github.com/0xmdrakib/AgentDomain' },
+    { label: 'GitHub', href: 'https://github.com/Talvono/AgentDomain' },
     { label: 'Home', href: '/' },
     { label: 'Terms of Service', href: '/terms' },
     { label: 'Privacy Policy', href: '/privacy' },
@@ -99,7 +99,7 @@ test('homepage organization metadata points to the current public GitHub source'
     ts.forEachChild(node, collect);
   }
   collect(homepage);
-  assert.deepEqual(links, ['https://github.com/0xmdrakib/AgentDomain']);
+  assert.deepEqual(links, ['https://github.com/Talvono/AgentDomain']);
 });
 
 test('footer link regression rejects the old route and URL lookalikes', async () => {

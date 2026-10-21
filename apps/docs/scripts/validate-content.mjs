@@ -210,9 +210,7 @@ async function assertAppContract() {
   if (!config.includes("const canonicalSite = 'https://docs.agentdomain.app'")) {
     throw new Error('astro.config.mjs: canonical site mismatch');
   }
-  if (
-    !config.includes("baseUrl: 'https://github.com/0xmdrakib/AgentDomain/edit/main/apps/docs/'")
-  ) {
+  if (!config.includes("baseUrl: 'https://github.com/Talvono/AgentDomain/edit/main/apps/docs/'")) {
     throw new Error('astro.config.mjs: public edit-link base mismatch');
   }
   if (!config.includes('disable404Route: true')) {
