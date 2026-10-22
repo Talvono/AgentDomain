@@ -22,7 +22,7 @@ const packageReadmes = [
   'mcp-server/examples/crewai',
   'mcp-server/examples/autogen',
 ].map((directory) => `packages/${directory}/README.md`);
-const historicalRelease = 'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0';
+const historicalRelease = 'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.1';
 
 test('public npm and Python manifests use the canonical source and coordinated workspace version', async () => {
   const { version } = JSON.parse(await read('packages/shared/package.json'));
@@ -105,7 +105,7 @@ test('contribution links and release verification use GitHub', async () => {
   assert.ok(contributing.includes(`[public GitHub repository](${canonicalRepository}/pulls)`));
   assert.match(contributing, /Require GitHub's\s+`verification\.verified: true`/);
   assert.doesNotMatch(contributing, /gitlab-signed-registry-v1|GitLab hosts current development/);
-  assert.ok(readme.includes('https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0'));
+  assert.ok(readme.includes('https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.1'));
 });
 
 test('security reporting uses private GitHub vulnerability reporting', async () => {
@@ -120,6 +120,7 @@ test('security reporting uses private GitHub vulnerability reporting', async () 
 test('public guides use GitHub-native source links and preserve historical references', async () => {
   const historical = new Map([
     ['README.md', [historicalRelease]],
+    ['apps/docs/README.md', [historicalRelease]],
     ['apps/docs/src/content/docs/frameworks/autogen.mdx', [historicalRelease]],
     ['apps/docs/src/content/docs/frameworks/crewai.mdx', [historicalRelease]],
     ['apps/docs/src/content/docs/frameworks/langchain.mdx', [historicalRelease]],

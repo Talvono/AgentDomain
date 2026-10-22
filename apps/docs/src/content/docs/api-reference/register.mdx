@@ -64,7 +64,7 @@ The x402 payment payload must echo the entire selected requirement as `accepted`
 including all `extra` fields, not only the three listed above. Submit the exact challenged request
 body. Do not recalculate its price, drop metadata, or replace the sealed quote with a display quote.
 
-SDK 0.11.0 creates one bound EIP-3009 payment signature after validating the exact Base-mainnet
+SDK 0.11.1 creates one bound EIP-3009 payment signature after validating the exact Base-mainnet
 USDC asset, recipient, EIP-712 domain, amount, timeout, and request binding. It also validates
 `quoteExpiresAt` when present and limits the authorization expiry accordingly. Wallet authentication
 may still need a separate signature. A quote expiring after submission is not proof of nonpayment;
@@ -85,10 +85,10 @@ before settlement was attempted for that submission:
 }
 ```
 
-Use `registrationPaymentRejectionSchema` from `@agentdomain/shared` 0.11.0 to validate the public
+Use `registrationPaymentRejectionSchema` from `@agentdomain/shared` 0.11.1 to validate the public
 payload and optional matching `error` alias, together with the HTTP status restriction.
 Do not reject an otherwise valid contract merely because it includes a top-level `error` field.
-SDK 0.11.0 surfaces a confirmed rejection as `RegistrationPaymentRejectedError` with
+SDK 0.11.1 surfaces a confirmed rejection as `RegistrationPaymentRejectedError` with
 `code: 'REGISTRATION_PAYMENT_REJECTED'`, `serverCode`, `message`, `handle`, and
 `settlementAttempted: false`.
 
@@ -116,8 +116,8 @@ settlement takes precedence. Checks requiring operator review report
 | `ownerAddress`     | no       | Final owner; defaults to `wallet`                        |
 | `preferredName`    | yes      | Requested domain label                                   |
 | `tld`              | yes      | Supported top-level domain                               |
-| `registerBasename` | no       | Defaults to `true` in SDK 0.11.0                         |
-| `registerEns`      | no       | Defaults to `false` in SDK 0.11.0                        |
+| `registerBasename` | no       | Defaults to `true` in SDK 0.11.1                         |
+| `registerEns`      | no       | Defaults to `false` in SDK 0.11.1                        |
 | `emailUsername`    | no       | Primary address local-part; defaults to `agent`          |
 | `premiumPlan`      | no       | `included`, `starter`, `pro`, or `enterprise`            |
 | `years`            | no       | Initial term from 1 through 10 years                     |
@@ -344,6 +344,6 @@ for support, but never use them instead of wallet authentication.
 
 SDK 0.9.0 adds the asynchronous methods documented in the [TypeScript guide](/sdk/typescript/).
 SDK 0.8.x and earlier can mistake `202` for a completed result; an old TypeScript return type
-does not make that safe. Integrate this HTTP contract directly or use SDK 0.11.0 for the
+does not make that safe. Integrate this HTTP contract directly or use SDK 0.11.1 for the
 payer-authenticated waiter, recovery methods, and single bound payment-signature fix. A client upgrade does not change service
 readiness or authorize another payment.
