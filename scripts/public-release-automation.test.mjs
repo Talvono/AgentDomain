@@ -20,6 +20,7 @@ import {
   AUTOMATION_LIMITS,
   READINESS_LIMITS,
   PROVENANCE_VERIFIER_PY,
+  releaseChanges,
 } from './public-release-automation.mjs';
 
 const sha = 'a'.repeat(40),
@@ -1014,6 +1015,19 @@ test('0.11.1 notes describe the approved patch and preserve primary product posi
     assert(f.release.body.includes(text));
   for (const text of ['new SDK features', 'email rollout complete', 'autonomous-only'])
     assert(!f.release.body.includes(text));
+});
+test('0.11.2 notes describe the ElizaOS paid-intent fix only', () => {
+  const notes = releaseChanges('0.11.2');
+  for (const text of [
+    'Patch changes:',
+    'only when the request names it',
+    'without Basename or ENS',
+    'every paid line before payment',
+  ])
+    assert(notes.includes(text));
+  for (const text of ['Canonical Talvono', 'new SDK features', 'email rollout complete'])
+    assert(!notes.includes(text));
+  assert.equal(releaseChanges('0.12.0'), '');
 });
 test('bounded release and publisher inventories fail closed instead of silently truncating', async () => {
   const f = fixture();

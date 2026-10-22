@@ -11,7 +11,7 @@ and output. It does not open a public listener.
 
 ## Versions
 
-These examples use MCP and SDK **0.11.1**. Inspection and unsigned planning
+These examples use MCP and SDK **0.11.2**. Inspection and unsigned planning
 were introduced in 0.10.0; version 0.11.0 also coordinates the standalone Python
 integrations. For local development, build from the reviewed checkout's root:
 
@@ -27,13 +27,13 @@ node packages/mcp-server/dist/index.js
 Run the pinned MCP server:
 
 ```bash
-npx -y @agentdomain/mcp-server@0.11.1
+npx -y @agentdomain/mcp-server@0.11.2
 ```
 
 For a persistent installation:
 
 ```bash
-npm install -g @agentdomain/mcp-server@0.11.1
+npm install -g @agentdomain/mcp-server@0.11.2
 agentdomain-mcp
 ```
 
@@ -101,7 +101,7 @@ change is not a completed domain renewal. See the
 - [Microsoft AutoGen Python McpWorkbench](examples/autogen/README.md): allowlisted
   inspection/planning with separate owner review.
 - [LangChain TypeScript tools](https://docs.agentdomain.app/frameworks/langchain/):
-  separate `@agentdomain/langchain-plugin`; its examples target 0.11.1. Use its
+  separate `@agentdomain/langchain-plugin`; its examples target 0.11.2. Use its
   matching reviewed source build for local development.
 
 Python dependencies are installed separately; npm supplies the Node MCP server,
@@ -123,7 +123,7 @@ read-only operations. For example:
   "mcpServers": {
     "agentdomain": {
       "command": "npx",
-      "args": ["-y", "@agentdomain/mcp-server@0.11.1"],
+      "args": ["-y", "@agentdomain/mcp-server@0.11.2"],
       "env": {
         "AGENTDOMAIN_API_URL": "https://api.agentdomain.app/api/v1"
       }
