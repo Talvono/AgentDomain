@@ -7,6 +7,7 @@ import {
   readLabeledEmail,
   readLabeledEmailUsername,
   readLabeledRemainder,
+  readAddOnIntent,
   readNamedPlan,
   readPlainWords,
   readRegistrationPlan,
@@ -131,5 +132,29 @@ describe('Eliza text parsing', () => {
     assert.equal(readNamedPlan('Upgrade productbot.xyz to Pro.'), 'pro');
     assert.equal(readNamedPlan('Upgrade promptbot.xyz and provide a receipt'), undefined);
     assert.throws(() => readNamedPlan('starter or pro?'), /only one Premium Plan/);
+  });
+
+  it('applies a negation to the whole Basename and ENS list', () => {
+    const intent = (text) => readAddOnIntent(text);
+    assert.deepEqual(intent('Quote research-agent.xyz for one year without Basename or ENS.'), {
+      basenameDeclined: true,
+      ensRequested: false,
+    });
+    assert.deepEqual(intent('Register helper.ai with ENS, no basename'), {
+      basenameDeclined: true,
+      ensRequested: true,
+    });
+    assert.deepEqual(intent('Register helper.ai, skip the ENS'), {
+      basenameDeclined: false,
+      ensRequested: false,
+    });
+    assert.deepEqual(intent('Register my-ens.xyz'), {
+      basenameDeclined: false,
+      ensRequested: false,
+    });
+    assert.deepEqual(intent('Register helper.ai with ENS and no ENS'), {
+      basenameDeclined: false,
+      ensRequested: false,
+    });
   });
 });

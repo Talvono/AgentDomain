@@ -346,3 +346,43 @@ export function readNamedPlan(text: string): PlanKeyword | undefined {
   if (plans.length > 1) throw new Error('Name only one Premium Plan: Starter, Pro, or Enterprise');
   return plans[0];
 }
+
+const NEGATIONS: readonly string[] = ['no', 'without', 'skip'];
+const NEGATED_LIST_WORDS: readonly string[] = [
+  'basename',
+  'ens',
+  'or',
+  'and',
+  'nor',
+  'a',
+  'an',
+  'the',
+];
+
+/**
+ * Basename and ENS choices in a registration request. A negation covers the whole list that follows
+ * it ("without Basename or ENS"); a declined add-on stays declined even if it is also mentioned.
+ */
+export function readAddOnIntent(text: string): {
+  basenameDeclined: boolean;
+  ensRequested: boolean;
+} {
+  const words = readPlainWords(text);
+  const declined = new Set<string>();
+  const mentioned = new Set<string>();
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index]!;
+    if (NEGATIONS.includes(word)) {
+      while (NEGATED_LIST_WORDS.includes(words[index + 1] ?? '')) {
+        index += 1;
+        declined.add(words[index]!);
+      }
+      continue;
+    }
+    mentioned.add(word);
+  }
+  return {
+    basenameDeclined: declined.has('basename'),
+    ensRequested: mentioned.has('ens') && !declined.has('ens'),
+  };
+}

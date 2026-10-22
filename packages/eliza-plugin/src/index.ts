@@ -21,6 +21,7 @@ import {
   readLabeledEmail,
   readLabeledEmailUsername,
   readLabeledRemainder,
+  readAddOnIntent,
   readNamedPlan,
   readPlainWords,
   readRegistrationPlan,
@@ -118,18 +119,12 @@ function parseParamsFromText(text: string): {
   }
   const lower = text.toLowerCase();
   const yearsMatch = lower.match(/([1-9]|10)\s*years?/);
-  const noBasename =
-    lower.includes('no basename') ||
-    lower.includes('without basename') ||
-    lower.includes('skip basename');
-  const noEns =
-    lower.includes('no ens') || lower.includes('without ens') || lower.includes('skip ens');
-  const wantsEns = readPlainWords(text).includes('ens');
+  const addOns = readAddOnIntent(text);
   return {
     preferredName: m[1]!.toLowerCase(),
     tld: m[2]!.toLowerCase(),
-    registerBasename: !noBasename,
-    registerEns: wantsEns && !noEns,
+    registerBasename: !addOns.basenameDeclined,
+    registerEns: addOns.ensRequested,
     emailEnabled: true,
     emailUsername: parseEmailUsername(text) ?? 'agent',
     years: yearsMatch ? parseInt(yearsMatch[1]!, 10) : 1,

@@ -74,6 +74,14 @@ describe('Eliza plan and add-on intents', () => {
     );
   });
 
+  it('declines both add-ons when one negation lists them', async () => {
+    const params = await quotedParams(
+      'Quote research-agent.xyz for 1 year without Basename or ENS',
+    );
+    assert.equal(params.get('registerBasename'), 'false');
+    assert.equal(params.get('registerEns'), 'false');
+  });
+
   it('requires a full domain instead of quoting a default name', async () => {
     const requests = capture(quote);
     await assert.rejects(
