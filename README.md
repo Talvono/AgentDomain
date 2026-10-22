@@ -40,16 +40,15 @@ npm install @agentdomain/sdk@0.11.1
 ```
 
 See the [release notes](https://github.com/Talvono/AgentDomain/releases/latest)
-for completed public releases and their exact registry provenance. Historically,
-five npm 0.11.0 packages had verified GitHub Actions OIDC provenance; the
-LangChain 0.11.0 local publication did not.
+for completed public releases and their exact registry provenance. All eight
+0.11.1 packages were published by GitHub Actions OIDC, and their registry bytes
+and signed provenance were verified before the release was created.
 
 ## Lifecycle workflow
 
-The **0.11.0** SDK and MCP releases include independent identity inspection,
-renewal observations and unsigned planning. Their published tarballs were
-verified against the reviewed GitHub Actions artifacts on September 14.
-See the [release notes](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0)
+The SDK and MCP releases include independent identity inspection, renewal
+observations and unsigned planning; the current release is **0.11.1**.
+See the [release notes](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.1)
 for publication evidence and the [Identity Check](https://agentdomain.app/verify)
 for read-only inspection.
 
