@@ -86,7 +86,12 @@ function CodePreview() {
             <span className="text-muted-foreground">{`// -> example.com | example.base.eth | example.eth | agent@example.com`}</span>
           </code>
         </pre>
-        <pre className="mobile-scroll hidden p-4 text-left font-mono text-xs leading-relaxed sm:block">
+        <pre
+          className="mobile-scroll hidden p-4 text-left font-mono text-xs leading-relaxed sm:block"
+          role="region"
+          aria-label="SDK registration example"
+          tabIndex={0}
+        >
           <code>
             <span className="text-stone-700">import</span>{' '}
             <span className="text-stone-950">{'{ AgentDomain }'}</span>{' '}
