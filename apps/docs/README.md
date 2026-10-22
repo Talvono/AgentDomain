@@ -15,10 +15,10 @@ related documentation and tests in the same pull request.
 
 ## Package Availability
 
-All eight publishable packages are published at **0.11.1**: shared, SDK, MCP,
+All eight publishable packages are published at **0.11.2**: shared, SDK, MCP,
 AgentKit, Eliza and LangChain on npm, plus `agentdomain-crewai` and
 `agentdomain-autogen` on PyPI. The
-[0.11.1 release](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.1)
+[0.11.2 release](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.2)
 records the verified registry bytes and signed provenance of every artifact. A
 workspace version alone is not publication evidence.
 

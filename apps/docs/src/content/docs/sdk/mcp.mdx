@@ -3,16 +3,16 @@ title: MCP server
 description: Install the public AgentDomain MCP server and expose identity tools to an MCP client.
 ---
 
-`@agentdomain/mcp-server` 0.11.1 runs over stdio and exposes the public AgentDomain lifecycle to
+`@agentdomain/mcp-server` 0.11.2 runs over stdio and exposes the public AgentDomain lifecycle to
 MCP-compatible clients.
 
-Version **0.11.1 is published on npm**. Install it directly or use the reviewed
+Version **0.11.2 is published on npm**. Install it directly or use the reviewed
 source build below for development.
 
 ## Install
 
 ```bash
-npm install --global @agentdomain/mcp-server@0.11.1
+npm install --global @agentdomain/mcp-server@0.11.2
 ```
 
 Or let an MCP client launch the pinned package directly:
@@ -22,7 +22,7 @@ Or let an MCP client launch the pinned package directly:
   "mcpServers": {
     "agentdomain": {
       "command": "npx",
-      "args": ["-y", "@agentdomain/mcp-server@0.11.1"]
+      "args": ["-y", "@agentdomain/mcp-server@0.11.2"]
     }
   }
 }
@@ -50,7 +50,7 @@ client's protected secret controls; do not place them in a committed configurati
 
 ## Independent identity inspection
 
-`inspect_agent_identity` is included in the published `@agentdomain/mcp-server@0.11.1`
+`inspect_agent_identity` is included in the published `@agentdomain/mcp-server@0.11.2`
 and is enabled by default. The older 0.9.0 release does not include it.
 For development from the reviewed source checkout, build from the repository root:
 
@@ -135,7 +135,7 @@ must remain explicit errors, not successful cached or invented observations.
 
 ### Renewal tools
 
-The MCP 0.11.1 release includes these default read-only tools. They call
+The MCP 0.11.2 release includes these default read-only tools. They call
 standalone SDK functions and do not create new
 HTTP API endpoints:
 
