@@ -955,6 +955,11 @@ export function RegisterFlow() {
                 <div className="border-t border-border/50 pt-3 mt-3">
                   <Line label="Total (USDC on Base)" value={`$${quote.totalUsdc}`} bold />
                 </div>
+                <p className="pt-1 text-xs leading-5 text-muted-foreground">
+                  After payment settles, AgentDomain sets up the domain, DNS, HTTPS, email, any
+                  selected names and the AgentID mint. Each step&apos;s status appears on your
+                  dashboard.
+                </p>
               </div>
             ) : null}
           </CardContent>
