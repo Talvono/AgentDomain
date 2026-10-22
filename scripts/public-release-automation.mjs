@@ -521,15 +521,25 @@ async function publisherPair(context, version, ci, api) {
   }
   return { pair, latest };
 }
+const RELEASE_CHANGES = Object.freeze({
+  '0.11.1': [
+    'Canonical Talvono package source and issue links, with current installation examples.',
+    'Coherent coordinated runtime and bridge package versions.',
+    'Version-derived immutable artifact guards.',
+    'Automatic OIDC publication with independently checked registry bytes and signed provenance.',
+  ],
+  '0.11.2': [
+    'ElizaOS: a paid Premium Plan or the ENS add-on is selected only when the request names it; domain labels and words such as "provide" no longer add one.',
+    'ElizaOS: one negation declines both add-ons ("without Basename or ENS"), plan purchases require a named plan, and quotes and registrations require a full domain.',
+    'ElizaOS: quote replies list the term and every paid line before payment.',
+  ],
+});
+export function releaseChanges(version) {
+  const changes = RELEASE_CHANGES[version];
+  return changes ? `\nPatch changes:\n${changes.map((line) => `- ${line}\n`).join('')}` : '';
+}
 function releaseBody(context, version, ci, pair, evidence) {
-  const changes =
-    version === '0.11.1'
-      ? '\nPatch changes:\n' +
-        '- Canonical Talvono package source and issue links, with current installation examples.\n' +
-        '- Coherent coordinated runtime and bridge package versions.\n' +
-        '- Version-derived immutable artifact guards.\n' +
-        '- Automatic OIDC publication with independently checked registry bytes and signed provenance.\n'
-      : '';
+  const changes = releaseChanges(version);
   return (
     `Coordinated public release ${version}\n\nAgentDomain is the agent-native identity and communications infrastructure.\n` +
     changes +

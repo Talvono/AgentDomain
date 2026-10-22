@@ -8,15 +8,15 @@ MCP bridge over stdio.
 
 ## Install
 
-These examples use `agentdomain-autogen==0.11.1` on PyPI and
-`@agentdomain/mcp-server@0.11.1` on npm.
+These examples use `agentdomain-autogen==0.11.2` on PyPI and
+`@agentdomain/mcp-server@0.11.2` on npm.
 
 Install the Python requirements in an isolated venv
 and the exact Node MCP bridge in a trusted directory:
 
 ```bash
 python -m pip install -r requirements.txt -c constraints.txt
-npm install --ignore-scripts --no-audit --no-fund @agentdomain/mcp-server@0.11.1
+npm install --ignore-scripts --no-audit --no-fund @agentdomain/mcp-server@0.11.2
 ```
 
 For release staging from the public checkout, install the reviewed local wheel
@@ -28,7 +28,7 @@ python -m pip install \
   -r packages/mcp-server/examples/autogen/framework-requirements.txt \
   -c packages/mcp-server/examples/autogen/constraints.txt
 python -m pip install --force-reinstall --no-deps --no-index \
-  .qa/autogen-package/dist/agentdomain_autogen-0.11.1-py3-none-any.whl
+  .qa/autogen-package/dist/agentdomain_autogen-0.11.2-py3-none-any.whl
 python -m pip check
 ```
 
