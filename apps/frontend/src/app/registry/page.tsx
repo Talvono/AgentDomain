@@ -108,12 +108,14 @@ export default async function RegistryPage({
         <form className="mb-8 grid gap-3 rounded-md border border-border/60 bg-card/70 p-4 sm:grid-cols-[1.4fr_1fr_1fr_auto]">
           <input
             name="q"
+            aria-label="Search agents"
             defaultValue={q}
             placeholder="Search domain, wallet, metadata"
             className="h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
           />
           <select
             name="framework"
+            aria-label="Framework"
             defaultValue={framework}
             className="h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20"
           >
@@ -126,6 +128,7 @@ export default async function RegistryPage({
           </select>
           <input
             name="capability"
+            aria-label="Capability"
             defaultValue={capability}
             placeholder="Capability"
             className="h-10 min-w-0 rounded-md border border-input bg-background px-3 text-sm outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/20"

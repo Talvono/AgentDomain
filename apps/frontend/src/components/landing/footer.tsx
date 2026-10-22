@@ -8,7 +8,7 @@ export function Footer() {
       <div className="container">
         <div className="mb-10 grid grid-cols-1 gap-8 sm:grid-cols-2 lg:grid-cols-5">
           <div>
-            <h4 className="font-semibold mb-3 text-sm">Product</h4>
+            <h2 className="font-semibold mb-3 text-sm">Product</h2>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
                 <a href="/register" className="hover:text-foreground">
@@ -33,7 +33,7 @@ export function Footer() {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold mb-3 text-sm">Identity</h4>
+            <h2 className="font-semibold mb-3 text-sm">Identity</h2>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
                 <a href="/ai-agent-identity" className="hover:text-foreground">
@@ -58,7 +58,7 @@ export function Footer() {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold mb-3 text-sm">Infrastructure</h4>
+            <h2 className="font-semibold mb-3 text-sm">Infrastructure</h2>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
                 <a href="/email-for-ai-agents" className="hover:text-foreground">
@@ -83,7 +83,7 @@ export function Footer() {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold mb-3 text-sm">Developers</h4>
+            <h2 className="font-semibold mb-3 text-sm">Developers</h2>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
                 <a href="https://docs.agentdomain.app" className="hover:text-foreground">
@@ -111,7 +111,7 @@ export function Footer() {
             </ul>
           </div>
           <div>
-            <h4 className="font-semibold mb-3 text-sm">Legal &amp; Company</h4>
+            <h2 className="font-semibold mb-3 text-sm">Legal &amp; Company</h2>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li>
                 <a href="/" className="hover:text-foreground">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo, useRef, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useId, useMemo, useRef, type ReactNode } from 'react';
 import { useAccount } from 'wagmi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -565,11 +565,14 @@ export function RegisterFlow() {
       {/* Step 1: Name */}
       <Card className="premium-surface">
         <CardContent className="p-4 sm:p-6">
-          <label className="block text-sm font-semibold mb-3">1. Choose your name</label>
+          <h2 className="mb-3 text-sm font-semibold">
+            <label htmlFor="register-agent-name">1. Choose your name</label>
+          </h2>
           <div className="flex flex-col gap-2 sm:flex-row">
             <div ref={tldSelectorRef} className="min-w-0 flex-1">
               <div className="flex min-w-0 items-stretch overflow-hidden rounded-lg border border-input bg-background/70 shadow-inner shadow-black/10 focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/60">
                 <input
+                  id="register-agent-name"
                   value={name}
                   onChange={(e) => {
                     const nextName = e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '');
@@ -738,12 +741,12 @@ export function RegisterFlow() {
       {/* Step 2: Add-ons */}
       <Card className="premium-surface">
         <CardContent className="p-4 sm:p-6">
-          <label className="block text-sm font-semibold mb-4">2. Choose your stack</label>
+          <h2 className="mb-4 text-sm font-semibold">2. Choose your stack</h2>
           <div className="space-y-8">
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
                 Registration
-              </h4>
+              </h3>
               <div
                 className={cn(
                   'interactive-surface w-full flex flex-col gap-3 rounded-lg border px-4 py-3 text-left sm:flex-row sm:items-center sm:justify-between',
@@ -754,15 +757,23 @@ export function RegisterFlow() {
                 )}
               >
                 <div>
-                  <div className="flex items-center gap-2 font-medium text-sm">
+                  <label
+                    htmlFor="register-years"
+                    className="flex items-center gap-2 font-medium text-sm"
+                  >
                     Registration Duration
-                  </div>
-                  <div className="text-xs text-muted-foreground font-mono mt-0.5">
+                  </label>
+                  <div
+                    id="register-years-help"
+                    className="text-xs text-muted-foreground font-mono mt-0.5"
+                  >
                     Select how many years to register upfront
                   </div>
                 </div>
                 <div className="w-full flex-shrink-0 sm:w-auto">
                   <select
+                    id="register-years"
+                    aria-describedby="register-years-help"
                     value={years}
                     onChange={(e) => setYears(Number(e.target.value))}
                     disabled={regState.phase !== 'idle' && regState.phase !== 'error'}
@@ -795,9 +806,9 @@ export function RegisterFlow() {
             </div>
 
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
                 Web3 Identities
-              </h4>
+              </h3>
               <Toggle
                 label="Basename on Base"
                 sublabel={
@@ -845,9 +856,9 @@ export function RegisterFlow() {
             </div>
 
             <div className="space-y-3">
-              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-1">
                 Advanced Features
-              </h4>
+              </h3>
               <EmailUsernameInput
                 value={emailUsername}
                 preview={emailPreview}
@@ -872,7 +883,7 @@ export function RegisterFlow() {
       {showQuoteCard && (
         <Card className="premium-surface premium-elevated border-primary/40">
           <CardContent className="p-4 sm:p-6">
-            <label className="block text-sm font-semibold mb-4">3. Pricing</label>
+            <h2 className="mb-4 text-sm font-semibold">3. Pricing</h2>
             {paymentQuote ? (
               <div className="space-y-2 text-sm">
                 <Line
@@ -908,20 +919,33 @@ export function RegisterFlow() {
               />
             ) : quote ? (
               <div className="space-y-2 text-sm">
+                <p className="pb-1 text-xs text-muted-foreground">
+                  {`One USDC payment on Base. Each priced line covers ${years} year${years === 1 ? '' : 's'}.`}
+                </p>
                 <Line
                   label={`Domain (.${tld})`}
                   value={
                     Number(quote.domainCostUsdc) > 0 ? `$${quote.domainCostUsdc}` : 'Checking...'
                   }
                 />
-                {registerBasename && <Line label="Basename" value={`$${quote.basenameCostUsdc}`} />}
-                {registerEns && <Line label="ENS" value={`$${quote.ensCostUsdc}`} />}
-                <Line label="Email inbox" value="Included" />
-                <Line label="SSL certification" value="Included" />
-                <Line
-                  label="Platform fee"
-                  value={`$${quote.platformFeeUsdc ?? quote.serviceFeeUsdc}`}
-                />
+                {registerBasename && (
+                  <Line
+                    label="Basename (includes gas estimate)"
+                    value={`$${quote.basenameCostUsdc}`}
+                  />
+                )}
+                {registerEns && (
+                  <Line label="ENS (includes gas estimate)" value={`$${quote.ensCostUsdc}`} />
+                )}
+                <div>
+                  <Line
+                    label="Platform fee"
+                    value={`$${quote.platformFeeUsdc ?? quote.serviceFeeUsdc}`}
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Includes email inbox and DNS setup, SSL certification and the AgentID NFT mint.
+                  </p>
+                </div>
                 {Number(quote.premiumPlanFeeUsdc) > 0 && (
                   <Line
                     label={`${quote.premiumPlanLabel} Premium Plan`}
@@ -1214,10 +1238,13 @@ function NameOverrideInput({
   onReset: () => void;
   disabled?: boolean;
 }) {
+  const inputId = useId();
   return (
     <div className="premium-surface rounded-lg border p-3">
       <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <span className="text-xs font-semibold text-muted-foreground">{label}</span>
+        <label htmlFor={inputId} className="text-xs font-semibold text-muted-foreground">
+          {label}
+        </label>
         <button
           type="button"
           onClick={onReset}
@@ -1234,6 +1261,7 @@ function NameOverrideInput({
         )}
       >
         <input
+          id={inputId}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
@@ -1272,9 +1300,12 @@ function EmailUsernameInput({
     <div className="premium-surface rounded-lg border p-3">
       <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <span className="text-xs font-semibold text-muted-foreground">
+          <label
+            htmlFor="register-email-username"
+            className="text-xs font-semibold text-muted-foreground"
+          >
             Primary email username
-          </span>
+          </label>
           <div className="wrap-anywhere mt-0.5 font-mono text-xs text-muted-foreground">
             {preview}
           </div>
@@ -1291,6 +1322,7 @@ function EmailUsernameInput({
         )}
       </div>
       <input
+        id="register-email-username"
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder="agent"
@@ -1345,6 +1377,7 @@ function PremiumPlanSelector({
             <button
               key={plan}
               type="button"
+              aria-pressed={selected}
               onClick={() => onChange(plan)}
               disabled={disabled}
               className={cn(
@@ -1375,25 +1408,31 @@ function PremiumPlanSelector({
                   Registry privacy included
                 </div>
               )}
-              {plan === 'enterprise' && selected && (
-                <select
-                  value={enterpriseSku}
-                  onClick={(event) => event.stopPropagation()}
-                  onChange={(event) => onEnterpriseSkuChange(event.target.value as ServicePlanSku)}
-                  className="mt-2 h-9 w-full rounded-md border border-border bg-background px-2 text-xs"
-                >
-                  {ENTERPRISE_PLAN_OFFERS.map((offer) => (
-                    <option key={offer.sku} value={offer.sku}>
-                      {offer.monthlyEmails.toLocaleString()} emails/month · $
-                      {Number(offer.yearlyPriceUsdcAtomic / 1_000_000n).toLocaleString()}/year
-                    </option>
-                  ))}
-                </select>
-              )}
             </button>
           );
         })}
       </div>
+      {value === 'enterprise' && (
+        <div className="mt-3 flex flex-col gap-1.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <label htmlFor="register-enterprise-sku" className="text-xs font-medium">
+            Enterprise email volume
+          </label>
+          <select
+            id="register-enterprise-sku"
+            value={enterpriseSku}
+            onChange={(event) => onEnterpriseSkuChange(event.target.value as ServicePlanSku)}
+            disabled={disabled}
+            className="h-9 w-full rounded-md border border-border bg-background px-2 text-xs sm:w-auto"
+          >
+            {ENTERPRISE_PLAN_OFFERS.map((offer) => (
+              <option key={offer.sku} value={offer.sku}>
+                {offer.monthlyEmails.toLocaleString()} emails/month · $
+                {Number(offer.yearlyPriceUsdcAtomic / 1_000_000n).toLocaleString()}/year
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
     </div>
   );
 }
@@ -1415,7 +1454,12 @@ function AddressOverrideInput({
     <div className="premium-surface rounded-lg border p-3">
       <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <span className="text-xs font-semibold text-muted-foreground">Deliver identity to</span>
+          <label
+            htmlFor="register-owner-address"
+            className="text-xs font-semibold text-muted-foreground"
+          >
+            Deliver identity to
+          </label>
           <div className="mt-0.5 text-xs text-muted-foreground">
             Leave empty to use connected wallet
             {connectedAddress ? ` (${shortAddress(connectedAddress)})` : ''}.
@@ -1433,6 +1477,7 @@ function AddressOverrideInput({
         )}
       </div>
       <input
+        id="register-owner-address"
         value={value}
         onChange={(event) => onChange(event.target.value.trim())}
         placeholder="0x agent wallet address (optional)"
@@ -1583,6 +1628,7 @@ function Toggle({
   return (
     <button
       type="button"
+      aria-pressed={checked}
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
       className={cn(
