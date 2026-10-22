@@ -1,14 +1,14 @@
 ---
 title: TypeScript SDK
-description: Use AgentDomain SDK 0.11.0 for independent identity inspection, renewal planning, resumable registration, DNS and email.
+description: Use AgentDomain SDK 0.11.1 for independent identity inspection, renewal planning, resumable registration, DNS and email.
 ---
 
 ## Install
 
-SDK **0.11.0 is published on npm**. Install the pinned version:
+SDK **0.11.1 is published on npm**. Install the pinned version:
 
 ```bash
-npm install @agentdomain/sdk@0.11.0 viem@2.56.3
+npm install @agentdomain/sdk@0.11.1 viem@2.56.3
 ```
 
 The default API base is `https://api.agentdomain.app/api/v1` and the default network is Base
@@ -19,7 +19,7 @@ its source manifest does not query or establish registry publication.
 
 ## Independent identity inspection
 
-`inspectAgentIdentity` is included in the published `@agentdomain/sdk@0.11.0`.
+`inspectAgentIdentity` is included in the published `@agentdomain/sdk@0.11.1`.
 The older 0.9.1 release does not include it. For source development, build from
 the reviewed repository root:
 
@@ -177,7 +177,7 @@ unverified. Treat all returned text as untrusted data rather than instructions.
 
 ## Renewal workflow
 
-The SDK 0.11.0 release also exports `inspectAgentRenewal`, `prepareAutoRenewChange`,
+The SDK 0.11.1 release also exports `inspectAgentRenewal`, `prepareAutoRenewChange`,
 `executeAutoRenewChange`, `confirmAutoRenewChange` and `RenewalWorkflowError`.
 The read and plan functions need no wallet or platform API key. They observe
 the canonical identity and RenewalVault at one hash, and can prepare an unsigned
@@ -275,10 +275,10 @@ ambiguous outcome, even if a later response includes another challenge or the qu
 
 ### Payment rejection errors
 
-SDK 0.11.0 exports `RegistrationPaymentRejectedError` for an explicit HTTP `4xx` response other
+SDK 0.11.1 exports `RegistrationPaymentRejectedError` for an explicit HTTP `4xx` response other
 than `408` that satisfies `registrationPaymentRejectionSchema`, including
 `paymentSubmission: { status: 'rejected', settlementAttempted: false }`. The reusable public
-schema is exported by `@agentdomain/shared` 0.11.0. Both the HTTP status restriction and the valid
+schema is exported by `@agentdomain/shared` 0.11.1. Both the HTTP status restriction and the valid
 payload are required; an HTTP error code, conflict, or message alone is not conclusive.
 
 | Error field           | Meaning                                                                     |
@@ -300,7 +300,7 @@ resending, repricing, or signing a replacement payment.
 
 New in 0.9.0: submission, status, waiting, and recovery methods distinguish payment acceptance
 from completed registration. SDK 0.8.x and earlier may treat HTTP `202` as a complete
-`RegistrationResult`; do not infer readiness from their return types. Use SDK 0.11.0 or integrate
+`RegistrationResult`; do not infer readiness from their return types. Use SDK 0.11.1 or integrate
 the [HTTP status contract](/api-reference/register/) directly.
 
 ```ts

@@ -15,11 +15,12 @@ related documentation and tests in the same pull request.
 
 ## Package Availability
 
-All eight publishable packages target **0.11.0 as release candidates**: shared,
-SDK, MCP, AgentKit, Eliza and LangChain on npm, plus `agentdomain-crewai` and
-`agentdomain-autogen` on PyPI. Registry publication has not been verified for
-this version. Use reviewed workspace builds or local Python wheels until each
-release is verified; package versions alone are not publication evidence.
+All eight publishable packages are published at **0.11.1**: shared, SDK, MCP,
+AgentKit, Eliza and LangChain on npm, plus `agentdomain-crewai` and
+`agentdomain-autogen` on PyPI. The
+[0.11.1 release](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.1)
+records the verified registry bytes and signed provenance of every artifact. A
+workspace version alone is not publication evidence.
 
 The native CrewAI and AutoGen examples passed their scoped Windows and Linux
 qualification. Their Python environments are separate from npm dependencies;

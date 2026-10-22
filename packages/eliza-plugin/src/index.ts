@@ -21,6 +21,10 @@ import {
   readLabeledEmail,
   readLabeledEmailUsername,
   readLabeledRemainder,
+  readAddOnIntent,
+  readNamedPlan,
+  readPlainWords,
+  readRegistrationPlan,
 } from './text-parsing.js';
 
 interface IAgentRuntime {
@@ -110,26 +114,23 @@ function parseParamsFromText(text: string): {
   premiumPlan: ServicePlanKey;
 } {
   const m = text.match(TLD_PATTERN);
+  if (!m) {
+    throw new Error('Include the full domain to quote or register, for example research-agent.xyz');
+  }
   const lower = text.toLowerCase();
   const yearsMatch = lower.match(/([1-9]|10)\s*years?/);
-  const noBasename =
-    lower.includes('no basename') ||
-    lower.includes('without basename') ||
-    lower.includes('skip basename');
-  const noEns =
-    lower.includes('no ens') || lower.includes('without ens') || lower.includes('skip ens');
-  const wantsEns = /\bens\b/.test(lower);
+  const addOns = readAddOnIntent(text);
   return {
-    preferredName: m?.[1]?.toLowerCase() ?? 'agent',
-    tld: m?.[2]?.toLowerCase() ?? 'xyz',
-    registerBasename: !noBasename,
-    registerEns: wantsEns && !noEns,
+    preferredName: m[1]!.toLowerCase(),
+    tld: m[2]!.toLowerCase(),
+    registerBasename: !addOns.basenameDeclined,
+    registerEns: addOns.ensRequested,
     emailEnabled: true,
     emailUsername: parseEmailUsername(text) ?? 'agent',
     years: yearsMatch ? parseInt(yearsMatch[1]!, 10) : 1,
     autoRenew:
       lower.includes('auto renew') || lower.includes('auto-renew') || lower.includes('autorenew'),
-    premiumPlan: parseRegistrationPlan(lower),
+    premiumPlan: readRegistrationPlan(text) ?? 'included',
   };
 }
 
@@ -145,20 +146,14 @@ function parseAmountUsdc(text: string): string {
   return amount;
 }
 
-function parseRegistrationPlan(lower: string): ServicePlanKey {
-  if (lower.includes('enterprise')) return 'enterprise';
-  if (lower.includes('pro')) return 'pro';
-  if (lower.includes('starter')) return 'starter';
-  return 'included';
-}
-
 function parsePlan(text: string): {
   plan: 'starter' | 'pro' | 'enterprise';
   planSku?: import('@agentdomain/shared').ServicePlanSku;
 } {
-  const lower = text.toLowerCase();
-  if (lower.includes('enterprise')) {
-    const quantity = parseCompactQuantity(lower);
+  const plan = readNamedPlan(text);
+  if (!plan) throw new Error('Name the Premium Plan: Starter, Pro, or Enterprise');
+  if (plan === 'enterprise') {
+    const quantity = parseCompactQuantity(readPlainWords(text).join(' '));
     const monthly = quantity
       ? Math.round(quantity.value * (quantity.suffix === 'm' ? 1_000_000 : 1_000))
       : 100_000;
@@ -167,7 +162,7 @@ function parsePlan(text: string): {
       planSku: `enterprise-${monthly}` as import('@agentdomain/shared').ServicePlanSku,
     };
   }
-  return { plan: lower.includes('starter') ? 'starter' : 'pro' };
+  return { plan };
 }
 
 function parseDnsRecord(text: string) {
@@ -248,8 +243,15 @@ export const quoteRegistrationAction = {
     const params = parseParamsFromText(message.content.text);
     const { ad } = getClients(runtime);
     const quote = await ad.quote(params);
+    const addOns = [
+      Number(quote.basenameCostUsdc) > 0 ? `Basename $${quote.basenameCostUsdc}` : '',
+      Number(quote.ensCostUsdc) > 0 ? `ENS $${quote.ensCostUsdc}` : '',
+      Number(quote.premiumPlanFeeUsdc ?? 0) > 0
+        ? `${quote.premiumPlanLabel} plan $${quote.premiumPlanFeeUsdc}`
+        : '',
+    ].filter(Boolean);
     return {
-      text: `Total: $${quote.totalUsdc} USDC for ${quote.domain}. Domain $${quote.domainCostUsdc}, platform $${quote.platformFeeUsdc ?? quote.serviceFeeUsdc}; email and SSL are included.`,
+      text: `Total: $${quote.totalUsdc} USDC for ${quote.domain} (${params.years} year${params.years === 1 ? '' : 's'}). Domain $${quote.domainCostUsdc}, platform $${quote.platformFeeUsdc ?? quote.serviceFeeUsdc}${addOns.length ? `, ${addOns.join(', ')}` : ''}; email and SSL are included.`,
       data: quote,
     };
   },
@@ -258,7 +260,7 @@ export const quoteRegistrationAction = {
 export const registerIdentityAction = {
   name: 'REGISTER_IDENTITY',
   description:
-    'Register a complete agent identity bundle on AgentDomain. Domain, DNS, email setup, SSL certification, AgentID NFT orchestration, and platform fee are included by default. Users can say "no basename" to skip Basename, "with ENS" to add ENS, and "email username support" to customize the primary inbox.',
+    'Register a complete agent identity bundle on AgentDomain. Domain, DNS, email setup, SSL certification, AgentID NFT orchestration, and platform fee are included by default. Include the full domain. Users can say "no basename" to skip Basename, "with ENS" to add ENS, "with the Pro plan" to add a paid Premium Plan, and "email username support" to customize the primary inbox.',
   similes: ['CLAIM_DOMAIN', 'CREATE_IDENTITY', 'GET_DOMAIN'],
   examples: [
     [
@@ -810,9 +812,9 @@ export const scheduleServicePlanRenewalAction = {
   handler: async (runtime: IAgentRuntime, message: Memory) => {
     const { ad } = getClients(runtime);
     const agentId = requireAgentId(message.content.text);
-    const lower = message.content.text.toLowerCase();
-    const plan = parseRegistrationPlan(lower);
-    const parsed = plan === 'enterprise' ? parsePlan(lower) : { plan, planSku: plan };
+    const plan: ServicePlanKey = readNamedPlan(message.content.text) ?? 'included';
+    const parsed =
+      plan === 'enterprise' ? parsePlan(message.content.text) : { plan, planSku: plan };
     const result = await ad.scheduleServicePlanRenewal(agentId, parsed);
     return {
       text: `Scheduled ${result.renewalPlanSku} for the next identity renewal.`,

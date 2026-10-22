@@ -270,3 +270,119 @@ export function parseCompactQuantity(text: string): CompactQuantity | undefined 
   }
   return undefined;
 }
+
+export type PlanKeyword = 'starter' | 'pro' | 'enterprise';
+
+const PLAN_KEYWORDS: readonly string[] = ['starter', 'pro', 'enterprise'];
+
+function isTokenCharacter(character: string | undefined): boolean {
+  return (
+    isWordCharacter(character) ||
+    character === '.' ||
+    character === '-' ||
+    character === '@' ||
+    character === '+'
+  );
+}
+
+function isDomainOrAddress(token: string): boolean {
+  if (token.includes('@')) return true;
+  const dot = token.lastIndexOf('.');
+  if (dot <= 0 || token.length - dot - 1 < 2) return false;
+  for (let index = dot + 1; index < token.length; index += 1) {
+    if (!isAsciiLetter(token[index])) return false;
+  }
+  return true;
+}
+
+/**
+ * Lowercase standalone words in source order. Domains and email addresses are dropped as whole
+ * tokens, so their labels (for example `promptbot.xyz`) are never read as plan or add-on words.
+ */
+export function readPlainWords(text: string): string[] {
+  const words: string[] = [];
+  let cursor = 0;
+  while (cursor < text.length) {
+    if (!isTokenCharacter(text[cursor])) {
+      cursor += 1;
+      continue;
+    }
+    const start = cursor;
+    while (cursor < text.length && isTokenCharacter(text[cursor])) cursor += 1;
+    let end = cursor;
+    while (end > start && (text[end - 1] === '.' || text[end - 1] === '-')) end -= 1;
+    const token = text.slice(start, end).toLowerCase();
+    if (token && !isDomainOrAddress(token)) words.push(token);
+  }
+  return words;
+}
+
+function distinctPlanKeywords(words: readonly string[], explicitOnly: boolean): PlanKeyword[] {
+  const found = new Set<PlanKeyword>();
+  words.forEach((word, index) => {
+    if (!PLAN_KEYWORDS.includes(word)) return;
+    const next = words[index + 1] === 'premium' ? words[index + 2] : words[index + 1];
+    if (!explicitOnly || next === 'plan' || words[index - 1] === 'plan') {
+      found.add(word as PlanKeyword);
+    }
+  });
+  return [...found];
+}
+
+/**
+ * Paid Premium Plan requested alongside a registration. A plan is selected only when it is named
+ * next to the word "plan" ("with the Pro plan", "plan: starter"), never from part of another word
+ * or domain label.
+ */
+export function readRegistrationPlan(text: string): PlanKeyword | undefined {
+  const plans = distinctPlanKeywords(readPlainWords(text), true);
+  if (plans.length > 1) throw new Error('Name only one Premium Plan: Starter, Pro, or Enterprise');
+  return plans[0];
+}
+
+/** Premium Plan named as a standalone word in a plan purchase or renewal-plan request. */
+export function readNamedPlan(text: string): PlanKeyword | undefined {
+  const plans = distinctPlanKeywords(readPlainWords(text), false);
+  if (plans.length > 1) throw new Error('Name only one Premium Plan: Starter, Pro, or Enterprise');
+  return plans[0];
+}
+
+const NEGATIONS: readonly string[] = ['no', 'without', 'skip'];
+const NEGATED_LIST_WORDS: readonly string[] = [
+  'basename',
+  'ens',
+  'or',
+  'and',
+  'nor',
+  'a',
+  'an',
+  'the',
+];
+
+/**
+ * Basename and ENS choices in a registration request. A negation covers the whole list that follows
+ * it ("without Basename or ENS"); a declined add-on stays declined even if it is also mentioned.
+ */
+export function readAddOnIntent(text: string): {
+  basenameDeclined: boolean;
+  ensRequested: boolean;
+} {
+  const words = readPlainWords(text);
+  const declined = new Set<string>();
+  const mentioned = new Set<string>();
+  for (let index = 0; index < words.length; index += 1) {
+    const word = words[index]!;
+    if (NEGATIONS.includes(word)) {
+      while (NEGATED_LIST_WORDS.includes(words[index + 1] ?? '')) {
+        index += 1;
+        declined.add(words[index]!);
+      }
+      continue;
+    }
+    mentioned.add(word);
+  }
+  return {
+    basenameDeclined: declined.has('basename'),
+    ensRequested: mentioned.has('ens') && !declined.has('ens'),
+  };
+}
