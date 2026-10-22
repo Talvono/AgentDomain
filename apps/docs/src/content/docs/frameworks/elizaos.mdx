@@ -26,17 +26,62 @@ export const character = {
 };
 ```
 
-The plugin includes actions for quoting and registration, registry discovery, DNS, email, plans,
-managed HTTPS, and renewals. Wallet-backed actions use the runtime's wallet integration.
+## Runtime settings
+
+The plugin reads its configuration through the runtime's settings. Inject credentials with the
+runtime's secret facility, never in a character file, repository, command line, or log.
+
+| Setting                    | Use                                                                                                                                                                                            |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent wallet key           | Signs registration, payments, and other wallet-authorized actions. The setting name is listed in the [package README](https://github.com/Talvono/AgentDomain/tree/main/packages/eliza-plugin). |
+| `AGENTDOMAIN_API_KEY`      | Agent-scoped key for DNS, email, and management actions.                                                                                                                                       |
+| `AGENTDOMAIN_API_URL`      | Defaults to `https://api.agentdomain.app/api/v1`. Set only for another documented environment.                                                                                                 |
+| `AGENTDOMAIN_NETWORK`      | `base` (default) or `base-sepolia`.                                                                                                                                                            |
+| `BASE_RPC_URL`             | Optional Base RPC. Defaults to `https://mainnet.base.org`.                                                                                                                                     |
+| `RENEWAL_VAULT_ADDRESS`    | Required for auto-renew.                                                                                                                                                                       |
+| `AGENTDOMAIN_BUILDER_CODE` | Public ERC-8021 app code for direct Base writes such as auto-renew. It is not a secret.                                                                                                        |
+
+Wallet-backed actions sign with the agent wallet key from these settings; the plugin does not use a
+separate runtime wallet integration. Use a dedicated wallet that holds only the USDC the agent needs.
+
+## Actions
+
+| Available with                            | Actions                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No credentials                            | `QUOTE_AGENT_REGISTRATION`, `SEARCH_AGENTS`                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Agent wallet key                          | `REGISTER_IDENTITY`, `LIST_AGENT_EMAIL`, `PURCHASE_SERVICE_PLAN`, `FUND_RENEWAL_VAULT`, `RECONFIGURE_SSL`                                                                                                                                                                                                                                                                                                                                                               |
+| Agent wallet key and renewal vault        | `ENABLE_AUTO_RENEW`                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Agent wallet key or `AGENTDOMAIN_API_KEY` | `SEND_AGENT_EMAIL`, `SEND_AGENT_EMAIL_BATCH`, `DELETE_AGENT_EMAIL`, `GET_AGENT_EMAIL_USAGE`, `CONFIGURE_EMAIL_WEBHOOK`, `UPDATE_PRIMARY_EMAIL`, `CREATE_EMAIL_ALIAS`, `DELETE_EMAIL_ALIAS`, `GET_RENEWAL_STATUS`, `GET_DNS_CAPABILITIES`, `LIST_DNS_RECORDS`, `CREATE_DNS_RECORD`, `UPDATE_DNS_RECORD`, `DELETE_DNS_RECORD`, `CHANGE_DNS_RECORDS`, `IMPORT_DNS_ZONE`, `EXPORT_DNS_ZONE`, `GET_SERVICE_PLAN`, `SET_REGISTRY_VISIBILITY`, `SCHEDULE_SERVICE_PLAN_RENEWAL` |
+
+Renewal vault withdrawal is not an Eliza action; use the [TypeScript SDK](/sdk/typescript/) or the
+[AgentKit provider](/frameworks/agentkit/) from the owner wallet.
+
+## Write registration requests
+
+The actions read their inputs from the message text:
+
+- Include the full domain, for example `research-agent.xyz`.
+- Basename is included unless the request says "no basename". Add ENS with "with ENS".
+- Set the term with a phrase such as "2 years" (1 to 10 years; one year by default).
+- Add a paid Premium Plan by naming it, for example "with the Pro plan".
+- Ask for "auto-renew" to switch it on after registration; this needs the renewal vault setting.
 
 Example intent:
 
 ```text
-Quote research-agent.ai for one year without Basename or ENS.
+Quote research-agent.xyz for 1 year with no basename.
 ```
 
-The agent should present a quote before any payment action. DNS mutations should use capability
-discovery and preview, and owner-only vault actions should require explicit confirmation.
+`REGISTER_IDENTITY` pays as soon as it runs. Configure the character to run
+`QUOTE_AGENT_REGISTRATION` first, show the total, and register only after explicit approval. The
+quoted total includes every selected add-on and plan.
 
-See [registration](/guides/registration/) and [DNS management](/guides/dns/) for the public safety
-contract these actions follow.
+## DNS and owner-only actions
+
+`CHANGE_DNS_RECORDS` and `IMPORT_DNS_ZONE` preview unless the request says "apply". To apply,
+include `baseRevision:` with the 64-character revision returned by a fresh preview. Start with
+merge mode and use replace only when the batch is the complete user-managed desired state.
+
+Owner-only vault actions should require explicit confirmation. See
+[registration](/guides/registration/), [DNS management](/guides/dns/), and
+[renewals](/guides/renewal/) for the public safety contract these actions follow.

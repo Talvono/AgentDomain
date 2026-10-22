@@ -28,11 +28,83 @@ const provider = new AgentDomainActionProvider({
 const actions = provider.getActions();
 ```
 
-The public builder code is needed only for direct Base writes. Wallet authorization is supplied by
-the AgentKit runtime, not embedded in the provider options.
+| Option                | Default                              | Use                                                                                         |
+| --------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------- |
+| `apiUrl`              | `https://api.agentdomain.app/api/v1` | Set only for another documented AgentDomain environment.                                    |
+| `apiKey`              | none                                 | Agent-scoped key for DNS, email, and management calls. Load it from a secret store.         |
+| `network`             | `base`                               | `base` or `base-sepolia`.                                                                   |
+| `baseRpcUrl`          | `https://mainnet.base.org`           | Base RPC used for wallet operations and receipts.                                           |
+| `builderCode`         | none                                 | Public ERC-8021 app code. Required for direct Base writes: auto-renew and vault withdrawal. |
+| `renewalVaultAddress` | none                                 | RenewalVault address. Required for auto-renew.                                              |
 
-The provider exposes quote and registration, registry search, email, DNS capability discovery and
-revision-safe changes, plan management, managed HTTPS reconfiguration, and renewal-vault actions.
+The public builder code is needed only for direct Base writes. Missing or invalid attribution
+stops those actions before a transaction is sent; reads, signatures, and x402 paid requests do not
+use it. Wallet authorization is supplied by the AgentKit runtime, not embedded in the provider
+options.
 
-Require confirmation for paid or owner-only actions. For DNS, call `get_dns_capabilities`, preview a
-batch, review it, then apply the returned revision.
+## Wallet requirements
+
+Each action has a `name`, a `description`, a Zod `schema`, and `invoke(walletProvider, args)`. The
+wallet provider is the one your AgentKit setup already uses:
+
+- `getAddress()` identifies the wallet for every action.
+- `signMessage` authorizes wallet-scoped API calls when no `apiKey` is set.
+- `signTypedData` signs x402 USDC payments.
+- `sendTransaction` submits direct Base writes such as auto-renew and vault withdrawal.
+
+Use a dedicated wallet that holds only the authority and USDC the agent needs.
+
+## Quote, confirm, register
+
+```ts
+const byName = new Map(provider.getActions().map((action) => [action.name, action]));
+
+async function run(name: string, input: unknown) {
+  const action = byName.get(name);
+  if (!action) throw new Error(`Unknown AgentDomain action: ${name}`);
+  return action.invoke(walletProvider, action.schema.parse(input));
+}
+
+const request = {
+  preferredName: 'research-agent',
+  tld: 'xyz',
+  years: 1,
+  registerBasename: false,
+};
+
+console.log(await run('quote_agent_registration', request));
+// Show the quote to the person or policy that approves spending, then continue only on approval.
+console.log(await run('register_agent_identity', request));
+```
+
+The quote lists the domain, platform fee, and any Basename, ENS, or plan amount for the requested
+term. Basename is on by default; pass `registerBasename: false` to skip it. ENS is added only with
+`registerEns: true`, and a paid Premium Plan only with `premiumPlan`. With `autoRenew: true` and a
+`renewalVaultAddress`, registration also submits the auto-renew setting from the same wallet, which
+needs `sendTransaction` and `builderCode`.
+
+## Actions
+
+| Area         | Actions                                                                                                                                                                                                        | Notes                                                                                                          |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| Registration | `quote_agent_registration`, `register_agent_identity`                                                                                                                                                          | Quotes are free. Registration pays USDC on Base through x402.                                                  |
+| Registry     | `search_agents`, `set_registry_visibility`                                                                                                                                                                     | Hiding an agent requires an active paid Premium Plan.                                                          |
+| Email        | `send_agent_email`, `send_agent_email_batch`, `list_agent_email`, `delete_agent_email`, `get_agent_email_usage`, `configure_email_webhook`, `update_primary_email`, `create_email_alias`, `delete_email_alias` | Batches queue up to 100 messages. Aliases need Starter, Pro, or Enterprise. `delete_agent_email` is permanent. |
+| DNS          | `get_dns_capabilities`, `list_dns_records`, `create_dns_record`, `update_dns_record`, `delete_dns_record`, `change_dns_records`, `import_dns_zone`, `export_dns_zone`                                          | Batches and zone imports preview by default (`dryRun: true`).                                                  |
+| HTTPS        | `reconfigure_ssl`                                                                                                                                                                                              | Rebuilds the managed hostname and its DNS validation records.                                                  |
+| Plans        | `get_service_plan`, `purchase_service_plan`, `schedule_service_plan_renewal`                                                                                                                                   | Purchases pay USDC through x402.                                                                               |
+| Renewal      | `get_renewal_status`, `fund_renewal_vault`, `enable_auto_renew`, `withdraw_renewal_vault`                                                                                                                      | Anyone can fund a vault. Only the AgentID owner can enable auto-renew or withdraw.                             |
+
+## Safety
+
+- Require explicit approval before actions that move funds: `register_agent_identity`,
+  `purchase_service_plan`, and `fund_renewal_vault`. Call `get_renewal_status` before funding and
+  usually deposit the returned shortfall.
+- Treat `enable_auto_renew` and `withdraw_renewal_vault` as owner-only changes.
+- For DNS, call `get_dns_capabilities`, preview a batch, review it, then apply it with
+  `dryRun: false` and the returned `baseRevision`. Start with `merge`; use `replace` only when the
+  batch is the complete user-managed desired state.
+- Keep `apiKey` in a trusted secret store. It is never needed in browser configuration.
+
+See [registration](/guides/registration/), [DNS management](/guides/dns/), and
+[renewals](/guides/renewal/) for the public contracts these actions follow.
