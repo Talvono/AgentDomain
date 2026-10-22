@@ -132,7 +132,7 @@ test('security overrides cover every locked resolution at the reviewed official 
     'devalue@>=5.0.0 <5.9.3': '5.9.3',
     'fast-uri@>=3.0.0 <3.1.8': '3.1.8',
     'glob@>=10.2.0 <10.5.0': '10.5.0',
-    'hono@<4.13.7': '4.13.7',
+    'hono@<4.13.13': '4.13.13',
     'ip-address@<=10.7.0': '10.7.1',
     'postcss-selector-parser@<7.1.6': '7.1.6',
     'proxy-addr@>=2.0.0 <2.0.8': '2.0.8',
@@ -141,6 +141,7 @@ test('security overrides cover every locked resolution at the reviewed official 
     'source-map-js@>=1.0.0 <1.2.2': '1.2.2',
     'undici@>=7.0.0 <7.29.1': '7.29.1',
     'undici@>=8.0.0 <8.10.2': '8.10.2',
+    'vite@>=8.2.0 <8.2.4': '8.2.4',
   };
   const lockedOverrides = Object.fromEntries(
     mappingEntries(sections.overrides).map(([key, value]) => [key, value.value]),
@@ -156,9 +157,9 @@ test('security overrides cover every locked resolution at the reviewed official 
       devalue: ['5.9.3'],
       'fast-uri': ['3.1.8'],
       glob: ['10.5.0', '13.0.6'],
-      hono: ['4.13.7'],
+      hono: ['4.13.13'],
       'ip-address': ['10.7.1'],
-      '@modelcontextprotocol/sdk': ['1.31.0'],
+      '@modelcontextprotocol/sdk': ['1.32.1'],
       next: ['16.3.8'],
       'eslint-config-next': ['16.3.8'],
       'postcss-selector-parser': ['7.1.6'],
@@ -167,6 +168,7 @@ test('security overrides cover every locked resolution at the reviewed official 
       'smol-toml': ['1.9.0'],
       'source-map-js': ['1.2.2'],
       undici: ['6.29.0', '7.29.1', '8.10.2'],
+      vite: ['8.2.4'],
     })) {
       assert.deepEqual(
         [

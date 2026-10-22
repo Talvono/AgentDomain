@@ -26,7 +26,7 @@ The assisted public areas include:
 - Machine-readable documentation generated from reviewed public sources.
 
 The registration changes include commits `f14392b` and `c4f477c`. The
-[release notes](https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0)
+[release notes](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0)
 record package publications and their verified evidence.
 Code review, automated tests and release artifacts are separate from proof that
 a live user workflow has been manually exercised or deployed successfully.

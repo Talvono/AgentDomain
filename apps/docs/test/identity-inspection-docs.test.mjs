@@ -81,11 +81,11 @@ test('retired root records are absent and release evidence remains linked', asyn
   const releaseNotes = new Set(
     [...readme.matchAll(/\[release notes\]\(([^)]+)\)/g)].map(([, url]) => url),
   );
-  assert.ok(releaseNotes.has('https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0'));
+  assert.ok(releaseNotes.has('https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0'));
   for (const target of releaseNotes)
     assert.ok(
       [
-        'https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0',
+        'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0',
         'https://github.com/Talvono/AgentDomain/releases/latest',
       ].includes(target),
       `Unexpected release evidence link: ${target}`,
@@ -109,7 +109,7 @@ test('AI disclosure states human control without event-submission claims', async
   assert.match(source, /human approval callback/);
   assert.equal(
     markdownLinkTarget(source, 'release notes'),
-    'https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0',
+    'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0',
   );
   assert.doesNotMatch(source, /private operational plans|backend implementation/);
   assert.doesNotMatch(source, /ETHOnline|ETHGlobal|hackathon|submission|post-event|demo/i);

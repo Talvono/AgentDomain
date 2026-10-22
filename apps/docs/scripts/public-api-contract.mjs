@@ -1010,7 +1010,7 @@ export function buildOpenApi(metadata) {
         'A deterministic catalog of the documented public REST surface, not an exhaustive backend specification. Some response and request fields are intentionally unspecified. Source versions are workspace versions, not proof of npm publication. Onchain identity inspection and unsigned renewal plans are SDK/MCP operations, not REST paths in this document. Cross-field refinements, ownership, permissions, payment and runtime limits remain authoritative.',
       license: {
         name: 'Apache-2.0',
-        url: 'https://github.com/0xmdrakib/AgentDomain/blob/main/LICENSE',
+        url: 'https://github.com/Talvono/AgentDomain/blob/main/LICENSE',
       },
     },
     servers: [{ url: API_ORIGIN }],

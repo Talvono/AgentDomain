@@ -46,8 +46,8 @@ test('direct dependency manifests and installed consumers use official fixed rel
   );
   assert.equal(docsManifest.dependencies.sharp, '0.35.5');
   assert.equal(docsManifest.dependencies['smol-toml'], '1.9.0');
-  assert.equal(mcpManifest.dependencies['@modelcontextprotocol/sdk'], '1.31.0');
-  assert.equal(sdkManifest.version, '1.31.0');
+  assert.equal(mcpManifest.dependencies['@modelcontextprotocol/sdk'], '1.32.1');
+  assert.equal(sdkManifest.version, '1.32.1');
   assert.equal(expressRequire('proxy-addr/package.json').version, '2.0.8');
   assert.equal(docsPostcssRequire('source-map-js/package.json').version, '1.2.2');
   assert.equal(tailwindRequire('postcss-selector-parser/package.json').version, '7.1.6');

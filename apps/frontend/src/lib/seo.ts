@@ -117,7 +117,7 @@ export function homepageJsonLd() {
       name: SITE_NAME,
       url: SITE_URL,
       logo: absoluteUrl(BRAND_ASSETS.markPng),
-      sameAs: ['https://github.com/0xmdrakib/AgentDomain'],
+      sameAs: ['https://github.com/Talvono/AgentDomain'],
     },
     {
       '@context': 'https://schema.org',

@@ -8,11 +8,12 @@ const sdkRequire = createRequire(import.meta.resolve('@modelcontextprotocol/sdk/
 const adapterRequire = createRequire(sdkRequire.resolve('@hono/node-server'));
 const { Hono } = sdkRequire('hono');
 
-test('the root override covers the reviewed Hono advisories through 4.13.7', async () => {
+test('the root override covers the reviewed Hono advisories through 4.13.13', async () => {
   const manifest = JSON.parse(
     await readFile(new URL('../../../package.json', import.meta.url), 'utf8'),
   );
-  assert.equal(manifest.pnpm.overrides['hono@<4.13.7'], '4.13.7');
+  assert.equal(manifest.pnpm.overrides['hono@<4.13.13'], '4.13.13');
+  assert.equal(manifest.pnpm.overrides['hono@<4.13.7'], undefined);
   assert.equal(manifest.pnpm.overrides['hono@<4.12.34'], undefined);
   assert.equal(adapterRequire.resolve('hono'), sdkRequire.resolve('hono'));
 });

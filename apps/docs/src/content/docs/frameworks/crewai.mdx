@@ -27,14 +27,14 @@ For source development, install from the reviewed public repository root:
 python -m pip install ./packages/crewai-plugin
 ```
 
-The [dated release evidence](https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0)
+The [dated release evidence](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0)
 records registry metadata and CI artifact comparison, with verified cryptographic
 attestations for both artifacts. Publication does not remove the dependency
 advisories below.
 
 The Python package does not download Node.js or install the MCP server. Those
 are separate prerequisites; no executable path is selected by a model.
-See the [Python package](https://github.com/0xmdrakib/AgentDomain/tree/main/packages/crewai-plugin)
+See the [Python package](https://github.com/Talvono/AgentDomain/tree/main/packages/crewai-plugin)
 for its wheel, dependency and security instructions.
 
 ## Prepare the local server
@@ -52,7 +52,7 @@ Use an operator-selected absolute Node executable and the reviewed MCP
 `dist/index.js` path. Never accept executable paths, shell commands, package
 names or RPC endpoints from an agent's tool arguments.
 
-The [CrewAI example](https://github.com/0xmdrakib/AgentDomain/tree/main/packages/mcp-server/examples/crewai)
+The [CrewAI example](https://github.com/Talvono/AgentDomain/tree/main/packages/mcp-server/examples/crewai)
 ships four files: `readonly_flow.py`, `README.md`, `requirements.in` and
 `requirements.lock`. Its lock pins CrewAI 1.15.21 and MCP 1.28.1. Use Python 3.12
 and a fresh isolated virtual environment, not the older adapter's environment:
@@ -153,5 +153,5 @@ embeddings, or enable framework memory, knowledge or caching. Tests trap those
 entrypoints during the native CrewAI and MCP flow. This bounds the tested
 recipe, not the installed library's safety: the Python vulnerability audit is
 **not clean**. Enabling memory or remote collections requires a separate review.
-See the [example's security note](https://github.com/0xmdrakib/AgentDomain/blob/main/packages/mcp-server/examples/crewai/README.md#security-note).
+See the [example's security note](https://github.com/Talvono/AgentDomain/blob/main/packages/mcp-server/examples/crewai/README.md#security-note).
 Python dependencies are separate from the npm package's runtime and audit.

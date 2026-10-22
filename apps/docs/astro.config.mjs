@@ -33,13 +33,13 @@ export default defineConfig({
       disable404Route: true,
       lastUpdated: true,
       editLink: {
-        baseUrl: 'https://github.com/0xmdrakib/AgentDomain/edit/main/apps/docs/',
+        baseUrl: 'https://github.com/Talvono/AgentDomain/edit/main/apps/docs/',
       },
       social: [
         {
           icon: 'github',
           label: 'AgentDomain on GitHub',
-          href: 'https://github.com/0xmdrakib/AgentDomain',
+          href: 'https://github.com/Talvono/AgentDomain',
         },
       ],
       customCss: ['./src/styles/docs.css'],

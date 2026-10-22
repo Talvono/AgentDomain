@@ -145,7 +145,7 @@ test('package cannot be published to npm', async () => {
   const pkg = JSON.parse(await readFile(join(DOCS_ROOT, 'package.json'), 'utf8'));
   assert.equal(pkg.private, true);
   assert.equal(pkg.license, 'Apache-2.0');
-  assert.equal(pkg.repository.url, 'https://github.com/0xmdrakib/AgentDomain.git');
+  assert.equal(pkg.repository.url, 'https://github.com/Talvono/AgentDomain.git');
 });
 
 test('framework guides distinguish real language bridges and their publication status', async () => {
@@ -196,7 +196,7 @@ test('framework guides pin the published npm and Python releases while retaining
   assert.match(crewai, /For source development, install from the reviewed public repository root/);
   assert.equal(
     markdownLinkTarget(crewai, 'dated release evidence'),
-    'https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0',
+    'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0',
   );
   assert.match(crewai, /records registry metadata and CI artifact comparison/);
   assert.match(crewai, /verified cryptographic\s+attestations for both artifacts/);
@@ -217,7 +217,7 @@ test('framework guides pin the published npm and Python releases while retaining
   assert.match(autogen, /For source development, install from the reviewed public repository root/);
   assert.equal(
     markdownLinkTarget(autogen, 'dated release evidence'),
-    'https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0',
+    'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0',
   );
   assert.match(autogen, /records matching registry metadata and CI artifacts/);
   assert.match(autogen, /verified cryptographic\s+attestations for both artifacts/);
@@ -235,7 +235,7 @@ test('framework guides pin the published npm and Python releases while retaining
   assert.match(langchain, /September 14,\s+2026 local publication has no OIDC provenance/);
   assert.equal(
     markdownLinkTarget(langchain, 'publication follow-up'),
-    'https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0',
+    'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0',
   );
   assert.match(langchain, /source manifest does not query or establish registry publication/);
   assert.match(langchain, /For source development, build from the reviewed public repository root/);
@@ -281,7 +281,7 @@ test('CrewAI guide matches the native helper and discloses the pinned Python dep
   }
   assert.equal(
     markdownLinkTarget(source, "example's security note"),
-    'https://github.com/0xmdrakib/AgentDomain/blob/main/packages/mcp-server/examples/crewai/README.md#security-note',
+    'https://github.com/Talvono/AgentDomain/blob/main/packages/mcp-server/examples/crewai/README.md#security-note',
   );
   assert.equal(
     markdownLinkTarget(source, 'poisoned-collection configuration risk in the Python client'),

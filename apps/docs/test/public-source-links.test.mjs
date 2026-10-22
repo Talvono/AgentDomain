@@ -7,8 +7,8 @@ import { createMachineDocuments } from '../scripts/machine-docs.mjs';
 import { DOCS_ROOT, EXPECTED_DOCS } from '../scripts/validate-content.mjs';
 
 const root = join(DOCS_ROOT, '..', '..');
-const repository = 'https://github.com/0xmdrakib/AgentDomain';
 const canonicalRepository = 'https://github.com/Talvono/AgentDomain';
+const repository = canonicalRepository;
 const read = (path) => readFile(join(root, path), 'utf8');
 const packageReadmes = [
   'shared',
@@ -22,12 +22,7 @@ const packageReadmes = [
   'mcp-server/examples/crewai',
   'mcp-server/examples/autogen',
 ].map((directory) => `packages/${directory}/README.md`);
-const historicalRelease = 'https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0';
-const canonicalFiles = new Set([
-  'README.md',
-  'CONTRIBUTING.md',
-  ...packageReadmes.filter((file) => !file.includes('/examples/')),
-]);
+const historicalRelease = 'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0';
 
 test('public npm and Python manifests use the canonical source and coordinated workspace version', async () => {
   const { version } = JSON.parse(await read('packages/shared/package.json'));
@@ -68,7 +63,7 @@ test('shared docs navigation and metadata use the public GitHub repository', asy
   assert.ok(config.includes(`baseUrl: '${repository}/edit/main/apps/docs/'`));
   assert.match(
     config,
-    /icon: 'github',\s+label: 'AgentDomain on GitHub',\s+href: 'https:\/\/github\.com\/0xmdrakib\/AgentDomain'/,
+    /icon: 'github',\s+label: 'AgentDomain on GitHub',\s+href: 'https:\/\/github\.com\/Talvono\/AgentDomain'/,
   );
   assert.doesNotMatch(config, /gitlab\.com\/agentdomain\/AgentDomain/);
   const manifest = JSON.parse(await read('apps/docs/package.json'));
@@ -110,7 +105,7 @@ test('contribution links and release verification use GitHub', async () => {
   assert.ok(contributing.includes(`[public GitHub repository](${canonicalRepository}/pulls)`));
   assert.match(contributing, /Require GitHub's\s+`verification\.verified: true`/);
   assert.doesNotMatch(contributing, /gitlab-signed-registry-v1|GitLab hosts current development/);
-  assert.ok(readme.includes('https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0'));
+  assert.ok(readme.includes('https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0'));
 });
 
 test('security reporting uses private GitHub vulnerability reporting', async () => {
@@ -131,8 +126,8 @@ test('public guides use GitHub-native source links and preserve historical refer
     [
       'apps/docs/src/content/docs/sdk/typescript.mdx',
       [
-        'https://github.com/0xmdrakib/AgentDomain/commit/f14392b280d117380cdf9a92b78f0bd37f78b619',
-        'https://github.com/0xmdrakib/AgentDomain/commit/c4f477c617f5832df618a508e5769bdf44a738a9',
+        'https://github.com/Talvono/AgentDomain/commit/f14392b280d117380cdf9a92b78f0bd37f78b619',
+        'https://github.com/Talvono/AgentDomain/commit/c4f477c617f5832df618a508e5769bdf44a738a9',
       ],
     ],
   ]);
@@ -156,14 +151,13 @@ test('public guides use GitHub-native source links and preserve historical refer
     }
     assert.doesNotMatch(source, /https:\/\/gitlab\.com\/agentdomain\/AgentDomain/, file);
     for (const target of links) {
+      assert.ok(
+        target === canonicalRepository ||
+          target.startsWith(`${canonicalRepository}/`) ||
+          target === `${canonicalRepository}.git`,
+        `${file}: source link must use the Talvono organization: ${target}`,
+      );
       if ((historical.get(file) ?? []).includes(target)) continue;
-      if (canonicalFiles.has(file))
-        assert.ok(
-          target === canonicalRepository ||
-            target.startsWith(`${canonicalRepository}/`) ||
-            target === `${canonicalRepository}.git`,
-          `${file}: nonhistorical source link must use Talvono: ${target}`,
-        );
       const { pathname } = new URL(target);
       const suffix = pathname.replace(/^\/(?:0xmdrakib|Talvono)\/AgentDomain/, '');
       if (

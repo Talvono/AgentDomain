@@ -3,7 +3,7 @@
 ## Reporting a vulnerability
 
 Please do not open a public issue for a suspected vulnerability. Use GitHub's
-[private vulnerability reporting](https://github.com/0xmdrakib/AgentDomain/security/advisories/new)
+[private vulnerability reporting](https://github.com/Talvono/AgentDomain/security/advisories/new)
 to send a confidential report to the maintainers.
 
 Include the affected component, observable impact, safe reproduction steps, and

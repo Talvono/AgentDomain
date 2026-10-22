@@ -4,7 +4,7 @@
   "private": true,
   "description": "AgentDomain smart contracts - AgentIdentityRegistry, PaymentRouter, RenewalVault on Base",
   "license": "Apache-2.0",
-  "repository": "https://github.com/0xmdrakib/AgentDomain.git",
+  "repository": "https://github.com/Talvono/AgentDomain.git",
   "homepage": "https://docs.agentdomain.app",
   "scripts": {
     "build": "forge build",

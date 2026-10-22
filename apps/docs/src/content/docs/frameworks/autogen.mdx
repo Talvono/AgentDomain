@@ -27,12 +27,12 @@ For source development, install from the reviewed public repository root:
 python -m pip install ./packages/autogen-plugin
 ```
 
-The [dated release evidence](https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0)
+The [dated release evidence](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0)
 records matching registry metadata and CI artifacts, with verified cryptographic
 attestations for both artifacts.
 
 The Python package does not install Node.js or the MCP server. See the
-[Python package](https://github.com/0xmdrakib/AgentDomain/tree/main/packages/autogen-plugin)
+[Python package](https://github.com/Talvono/AgentDomain/tree/main/packages/autogen-plugin)
 for wheel and dependency instructions.
 
 ## Prepare the runtime
@@ -46,7 +46,7 @@ pnpm --filter @agentdomain/sdk build
 pnpm --filter @agentdomain/mcp-server build
 ```
 
-The [native AutoGen example](https://github.com/0xmdrakib/AgentDomain/tree/main/packages/mcp-server/examples/autogen)
+The [native AutoGen example](https://github.com/Talvono/AgentDomain/tree/main/packages/mcp-server/examples/autogen)
 contains Python dependencies and the bounded workflow. Its dependencies belong
 in a separate Python environment; npm installs only the Node.js MCP server.
 Use the example's qualified Python dependency versions rather than silently

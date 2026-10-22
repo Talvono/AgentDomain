@@ -49,7 +49,7 @@ LangChain 0.11.0 local publication did not.
 The **0.11.0** SDK and MCP releases include independent identity inspection,
 renewal observations and unsigned planning. Their published tarballs were
 verified against the reviewed GitHub Actions artifacts on September 14.
-See the [release notes](https://github.com/0xmdrakib/AgentDomain/releases/tag/npm-v0.11.0)
+See the [release notes](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.0)
 for publication evidence and the [Identity Check](https://agentdomain.app/verify)
 for read-only inspection.
 

@@ -109,9 +109,9 @@ packages['apps/docs'] = {
 const configHashes = {
   'turbo.json': '9f279fde674c92c099aa1cb74be773f150abe73b660f66fee188ecf846a33298',
   'pnpm-workspace.yaml': '1b57bbcadad5a4179fcfe1aa68a98f8cd64cf92d5317f77fe751098eb231c44e',
-  'pnpm-lock.yaml': '89de02b95582da9631a8a27387f51e4fbf701db7241a557a97cad567f0e74130',
+  'pnpm-lock.yaml': '70c031883e18ba8ffefcfccbf70a309bb2df7c8c6e6d4b4f9b7e2e2dad490ba1',
   'tsconfig.base.json': 'b21bc7c97e0995f7e6425d13ae56418504c299cdebd079c7f806c7af80ed7e6d',
-  'contracts/package.json': 'bf123b17fce911148816b94175458618019204340ba70b6b53aa7555bcac5925',
+  'contracts/package.json': '8da7137af5286fd6d55c8ef3c27b669d422b626fb97a67a7a2a1dfd722a5c317',
   'packages/shared/tsconfig.json':
     'ea2eabdb1a802e13cda74c7734a313184099a233f4f88c1346108d2428a4cab0',
   'packages/sdk/tsconfig.json': 'ea2eabdb1a802e13cda74c7734a313184099a233f4f88c1346108d2428a4cab0',
@@ -127,7 +127,7 @@ const configHashes = {
     '04928df7080cce83cc9166e2234481c9a4953e5784010a67492fae2a6a96aedb',
   'apps/frontend/tsconfig.json': '700f06efb82b73994aa00ef7cbb46487634295ad162090024a38eb7a5d2949f7',
   'apps/docs/tsconfig.json': '974b0a3b37e52f3649d9df63e72e374794e9e797c8ae61eca4812f844406f7ef',
-  'apps/docs/astro.config.mjs': '75098a1d51219b15edc8f446b0a8f7293e8013391995993c0013c4783e2500db',
+  'apps/docs/astro.config.mjs': '8dc559240b0432fd7cad6600152f432e16ea166433a6964802a8591da98cd007',
   'apps/frontend/open-next.config.ts':
     'cf6283a9d48c90a5c8288a8993b4c6e2b202ed0deff427209ab5d1b8e6b4453b',
   'apps/frontend/next.config.mjs':
