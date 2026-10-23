@@ -10,8 +10,12 @@ const txHash = `0x${'ab'.repeat(32)}`;
 const builderCode = 'agentkit_test';
 const originalFetch = globalThis.fetch;
 
+// Every API request (registration POST and status reads) carries a fresh v2 signature.
 async function signReadMessage(message) {
-  assert.match(message, /^agentdomain\.app api auth \d+$/);
+  assert.match(
+    message,
+    /^AgentDomain API request\nversion: 2\naudience: [^\n]+\nmethod: (?:GET|POST)\ntarget: \/[^\n]*\nbody-sha256: [0-9a-f]{64}\ntimestamp: \d{13}\nnonce: [0-9a-f]{32}$/,
+  );
   return `0x${'11'.repeat(65)}`;
 }
 

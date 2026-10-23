@@ -343,9 +343,14 @@ action is required.
 `getRegistration(id)` returns `RegistrationProgress`; `getRegistrations({ limit, offset })` returns
 the payer's paginated list, defaulting to 20 entries with a maximum of 50. These methods never
 authorize with an agent API key or payment header.
-Wallet clients sign `agentdomain.app api auth <timestampMs>` for `X-Agent-Signature`; the SDK caches
-the signature in memory for up to four minutes and refreshes before its five-minute expiry.
-Signing rejection and authorization failure stop the waiter, avoiding repeated wallet prompts.
+Wallet clients sign a request-bound `X-Agent-Signature` for every API request. It covers the
+method, URL, body digest and a single-use nonce, so the SDK never caches or reuses a signature.
+Each status poll therefore asks the wallet to sign. Use a local or server-side signer for
+autonomous polling. Browser apps should use `registrationAuth: 'session'` (SIWE cookies) so a
+wallet prompt does not appear on every poll. Signing rejection and authorization failure stop
+the waiter.
+`createAgentSignatureHeader(signer, { method, url, body })` produces the same header for custom
+HTTP clients.
 Signature-authenticated registration requests omit cookies so another wallet's SIWE session
 cannot override the signer. Status, list, and recovery reads send `expectedPayer` and verify
 `X-Authenticated-Wallet` on successful responses before decoding their bodies. The query parameter

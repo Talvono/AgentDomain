@@ -67,7 +67,8 @@ function fixture(t, paidResponse, challengeFirst = true) {
 }
 
 function assertOnePayment(h) {
-  assert.deepEqual(h.calls, { posts: 2, paymentSignatures: 1, authSignatures: 1 });
+  // One single-use request signature per POST: the challenge and the paid retry.
+  assert.deepEqual(h.calls, { posts: 2, paymentSignatures: 1, authSignatures: 2 });
   assert.equal(h.bodies[0], h.bodies[1]);
 }
 

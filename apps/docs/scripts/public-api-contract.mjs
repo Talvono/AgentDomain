@@ -1034,7 +1034,7 @@ export function buildOpenApi(metadata) {
           in: 'header',
           name: 'X-Agent-Signature',
           description:
-            '<walletAddress>:<timestampMs>:<signature> over agentdomain.app api auth <timestampMs>. Five-minute authorization freshness. The expectedPayer query does not authenticate.',
+            'v2:<walletAddress>:<timestampMs>:<nonce>:<signature>. EIP-191 signature over the request-bound message in the API overview: audience, method, canonical target, body SHA-256, timestamp and a single-use 128-bit nonce. Five-minute freshness; each nonce is accepted once. The expectedPayer query does not authenticate.',
         },
       },
       schemas: publicSchemas(),

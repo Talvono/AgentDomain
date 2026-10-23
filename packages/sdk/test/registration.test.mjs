@@ -2,13 +2,20 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 import { decodePaymentSignatureHeader, encodePaymentRequiredHeader } from '@x402/core/http';
 import { registrationAcceptedSchema, registrationProgressSchema } from '@agentdomain/shared';
-import { AgentDomain, RegistrationFailedError, RegistrationPendingError } from '../dist/index.js';
+import {
+  AgentDomain,
+  RegistrationFailedError,
+  RegistrationPendingError,
+  buildAgentSignatureMessage,
+  canonicalAgentRequestTarget,
+} from '../dist/index.js';
 
 const apiUrl = 'https://api.example.test/api/v1';
 const payer = '0x1111111111111111111111111111111111111111';
 const id = '11111111-1111-4111-8111-111111111111';
 const otherId = '22222222-2222-4222-8222-222222222222';
 const now = new Date('2026-09-06T00:00:00.000Z');
+const EMPTY_SHA256 = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
 const originalFetch = globalThis.fetch;
 const originalLocation = Object.getOwnPropertyDescriptor(globalThis, 'location');
 afterEach(() => {
@@ -386,7 +393,16 @@ describe('public asynchronous registration contracts', () => {
     const payment = decodePaymentSignatureHeader(requests[1].headers['PAYMENT-SIGNATURE']);
     assert.equal(payment.payload.authorization.from.toLowerCase(), payer);
     assert.equal(payment.payload.authorization.nonce, `0x${'ab'.repeat(32)}`);
-    assert.equal(signer.messages.length, 1);
+    // Each POST carries its own single-use request-bound signature over the same body.
+    assert.equal(signer.messages.length, 2);
+    const [first, paid] = requests.map((request) => request.headers['X-Agent-Signature']);
+    assert.match(first, /^v2:0x1{40}:\d{13}:[0-9a-f]{32}:0x(11){65}$/);
+    assert.match(paid, /^v2:0x1{40}:\d{13}:[0-9a-f]{32}:0x(11){65}$/);
+    assert.notEqual(first.split(':')[3], paid.split(':')[3]);
+    for (const message of signer.messages) {
+      assert.match(message, /^AgentDomain API request\nversion: 2\naudience: api\.example\.test\n/);
+      assert.match(message, /\nmethod: POST\ntarget: \/api\/v1\/agents\/register\n/);
+    }
   });
 });
 
@@ -494,40 +510,50 @@ describe('payer-authenticated registration reads', () => {
     await assert.rejects(ad.getRegistrations({ limit: 51 }), /1-50/);
     assert.deepEqual(limits, [20, 50]);
   });
-  it('does not sign again after abort, including after the signature cache expires', async (t) => {
-    t.mock.timers.enable({ apis: ['Date'], now });
+  it('does not sign after abort', async () => {
     const signer = wallet();
     globalThis.fetch = async () => json(progress());
     const ad = new AgentDomain({ apiUrl, walletClient: signer });
     await ad.getRegistration(id);
-    t.mock.timers.tick(240_000);
     await assert.rejects(ad.getRegistration(id, { signal: AbortSignal.abort() }), {
       name: 'AbortError',
     });
     assert.equal(signer.messages.length, 1);
   });
-  it('caches a read signature, refreshes before expiry, and never sends the API key', async (t) => {
+  it('signs every read with a fresh request-bound signature and never sends the API key', async (t) => {
     t.mock.timers.enable({ apis: ['Date'], now });
     const signer = wallet();
-    const headers = [];
+    const requests = [];
     globalThis.fetch = async (url, init) => {
-      headers.push(init.headers);
+      requests.push({ url, headers: init.headers });
       assert.equal(init.credentials, 'omit');
       assert.equal(init.cache, 'no-store');
       return json(isListUrl(url) ? { items: [progress()], total: 1, hasMore: false } : progress());
     };
     const ad = new AgentDomain({ apiUrl, apiKey: 'agent-key', walletClient: signer });
     await Promise.all([ad.getRegistration(id), ad.getRegistrations()]);
-    assert.equal(signer.messages.length, 1);
-    assert.equal(headers[0]['X-Agent-Signature'], headers[1]['X-Agent-Signature']);
-    assert.equal(signer.messages[0], `agentdomain.app api auth ${now.getTime()}`);
-    t.mock.timers.tick(240_000);
     await ad.getRegistration(id);
-    assert.equal(signer.messages.length, 2);
-    assert.notEqual(headers[2]['X-Agent-Signature'], headers[0]['X-Agent-Signature']);
-    for (const item of headers) {
-      assert.equal(item.Authorization, undefined);
-      assert.equal(item['PAYMENT-SIGNATURE'], undefined);
+    assert.equal(signer.messages.length, 3);
+    const headers = requests.map((request) => request.headers['X-Agent-Signature']);
+    assert.equal(new Set(headers).size, 3);
+    for (const [index, request] of requests.entries()) {
+      const [version, address, timestamp, nonce, signature] = headers[index].split(':');
+      assert.equal(version, 'v2');
+      assert.equal(address, payer);
+      assert.equal(Number(timestamp), now.getTime());
+      assert.match(nonce, /^[0-9a-f]{32}$/);
+      assert.equal(signature, `0x${'11'.repeat(65)}`);
+      const expected = buildAgentSignatureMessage({
+        audience: 'api.example.test',
+        method: 'GET',
+        target: canonicalAgentRequestTarget(new URL(request.url)),
+        bodySha256: EMPTY_SHA256,
+        timestamp: now.getTime(),
+        nonce,
+      });
+      assert.ok(signer.messages.includes(expected), expected);
+      assert.equal(request.headers.Authorization, undefined);
+      assert.equal(request.headers['PAYMENT-SIGNATURE'], undefined);
     }
   });
 
@@ -681,7 +707,8 @@ describe('bounded status waiting', () => {
     assert.deepEqual(await waiting, legacy());
     assert.equal(posts, 2);
     assert.equal(reads, 2);
-    assert.equal(signer.messages.length, 1);
+    // Two POSTs and two status reads, each with its own single-use signature.
+    assert.equal(signer.messages.length, 4);
   });
 
   it('honors a longer server polling hint', async (t) => {
