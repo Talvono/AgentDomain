@@ -215,8 +215,10 @@ export const dnsRecordObjectSchema = z.object({
   type: dnsRecordTypeSchema,
   name: z.string().trim().min(1).max(253),
   value: z.string().min(1).max(65_535).optional(),
-  data: z.record(z.unknown()).optional(),
-  ttl: z.number().int().min(60).max(3600).default(3600).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
+  // No default: zod 4 would apply it inside optional() and reset TTL on partial updates;
+  // the API applies its own default when a new record omits ttl.
+  ttl: z.number().int().min(60).max(3600).optional(),
   priority: z.number().int().min(0).max(65_535).nullable().optional(),
 });
 

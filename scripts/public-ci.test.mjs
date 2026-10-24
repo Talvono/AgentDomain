@@ -533,7 +533,12 @@ test('standalone audit and test commands retain security coverage, with CI polic
   for (const filename of ['verify-release-ci.test.mjs', 'public-ci.test.mjs']) {
     assert.equal(manifest.scripts['test:public'].split(filename).length - 1, 1);
   }
-  for (const filename of ['http-cache-semantics', 'braces', 'production-dependencies']) {
+  for (const filename of [
+    'http-cache-semantics',
+    'braces',
+    'production-dependencies',
+    'reown-zod-override',
+  ]) {
     assert.ok(manifest.scripts['test:dependency-security'].includes(`${filename}.test.mjs`));
   }
 });
