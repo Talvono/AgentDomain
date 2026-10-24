@@ -97,8 +97,8 @@ test('repository pins reviewed production dependencies and excludes unsafe graph
   assert.match(lockfile, /qs@6\.16\.0:/);
   assert.doesNotMatch(lockfile, /qs@6\.15\.3:/);
   assert.equal(rootPackage.pnpm.overrides['fast-uri@>=3.0.0 <3.1.8'], '3.1.8');
-  assert.equal(frontendPackage.dependencies.next, '16.3.8');
-  assert.equal(frontendPackage.devDependencies['eslint-config-next'], '16.3.8');
+  assert.equal(frontendPackage.dependencies.next, '16.4.2');
+  assert.equal(frontendPackage.devDependencies['eslint-config-next'], '16.4.2');
   assert.equal(frontendPackage.dependencies.wagmi, '3.7.7');
   assert.equal(frontendPackage.dependencies['@coinbase/wallet-sdk'], '4.3.7');
   assert.equal(frontendPackage.dependencies['@walletconnect/ethereum-provider'], '2.21.8');
@@ -109,6 +109,24 @@ test('repository pins reviewed production dependencies and excludes unsafe graph
   assert.match(`${wagmiSource}\n${walletButtonSource}`, /wagmi\/connectors\/injected/);
   assert.match(workflow, /allow-licenses:/);
   assert.doesNotMatch(workflow, /deny-licenses:/);
+});
+
+test('the only audit exception is the unpatched zod 3 advisory, and only while zod 3 is locked', async () => {
+  const manifest = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
+  const lockfile = await readFile(path.join(repoRoot, 'pnpm-lock.yaml'), 'utf8');
+  assert.deepEqual(manifest.pnpm.auditConfig, { ignoreGhsas: ['GHSA-mrhx-c7xc-m3w5'] });
+  const zod = [...lockfile.matchAll(/^ {2}zod@(\d+)\.(\d+)\.(\d+):/gm)].map(([, ...parts]) =>
+    parts.map(Number),
+  );
+  assert.ok(
+    zod.some(([major]) => major < 4),
+    'No zod 3 remains: remove the GHSA-mrhx-c7xc-m3w5 audit exception and its CONTRIBUTING note.',
+  );
+  for (const [major, minor, patch] of zod.filter(([major]) => major >= 4))
+    assert.ok(
+      minor > 6 || (minor === 6 && patch >= 6),
+      `zod ${major}.${minor}.${patch} must be patched`,
+    );
 });
 
 test('security overrides cover every locked resolution at the reviewed official versions', async () => {
@@ -126,6 +144,7 @@ test('security overrides cover every locked resolution at the reviewed official 
   };
   const sections = Object.fromEntries(mappingEntries(root));
   const expectedOverrides = {
+    'body-parser@>=2.0.0 <2.4.0': '2.4.0',
     'brace-expansion@>=1.0.0 <1.1.21': '1.1.21',
     'brace-expansion@>=2.0.0 <2.1.7': '2.1.7',
     'brace-expansion@>=4.0.0 <5.0.12': '5.0.12',
@@ -133,7 +152,7 @@ test('security overrides cover every locked resolution at the reviewed official 
     'fast-uri@>=3.0.0 <3.1.8': '3.1.8',
     'glob@>=10.2.0 <10.5.0': '10.5.0',
     'hono@<4.13.13': '4.13.13',
-    'ip-address@<=10.7.0': '10.7.1',
+    'ip-address@<=10.7.3': '10.7.4',
     'postcss-selector-parser@<7.1.6': '7.1.6',
     'proxy-addr@>=2.0.0 <2.0.8': '2.0.8',
     'sharp@<0.35.5': '0.35.5',
@@ -158,10 +177,10 @@ test('security overrides cover every locked resolution at the reviewed official 
       'fast-uri': ['3.1.8'],
       glob: ['10.5.0', '13.0.6'],
       hono: ['4.13.13'],
-      'ip-address': ['10.7.1'],
+      'ip-address': ['10.7.4'],
       '@modelcontextprotocol/sdk': ['1.32.1'],
-      next: ['16.3.8'],
-      'eslint-config-next': ['16.3.8'],
+      next: ['16.4.2'],
+      'eslint-config-next': ['16.4.2'],
       'postcss-selector-parser': ['7.1.6'],
       'proxy-addr': ['2.0.8'],
       sharp: ['0.35.5'],
@@ -169,6 +188,7 @@ test('security overrides cover every locked resolution at the reviewed official 
       'source-map-js': ['1.2.2'],
       undici: ['6.29.0', '7.29.1', '8.10.2'],
       vite: ['8.2.4'],
+      'body-parser': ['2.4.0'],
     })) {
       assert.deepEqual(
         [
