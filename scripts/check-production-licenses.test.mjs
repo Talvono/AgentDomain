@@ -96,7 +96,7 @@ test('repository pins reviewed production dependencies and excludes unsafe graph
   assert.equal(rootPackage.pnpm.overrides['qs@<6.16.0'], '6.16.0');
   assert.match(lockfile, /qs@6\.16\.0:/);
   assert.doesNotMatch(lockfile, /qs@6\.15\.3:/);
-  assert.equal(rootPackage.pnpm.overrides['fast-uri@>=3.0.0 <3.1.8'], '3.1.8');
+  assert.equal(rootPackage.pnpm.overrides['fast-uri@>=3.0.0 <3.1.9'], '3.1.9');
   assert.equal(frontendPackage.dependencies.next, '16.4.2');
   assert.equal(frontendPackage.devDependencies['eslint-config-next'], '16.4.2');
   assert.equal(frontendPackage.dependencies.wagmi, '3.7.7');
@@ -149,7 +149,7 @@ test('security overrides cover every locked resolution at the reviewed official 
     'brace-expansion@>=2.0.0 <2.1.7': '2.1.7',
     'brace-expansion@>=4.0.0 <5.0.12': '5.0.12',
     'devalue@>=5.0.0 <5.9.3': '5.9.3',
-    'fast-uri@>=3.0.0 <3.1.8': '3.1.8',
+    'fast-uri@>=3.0.0 <3.1.9': '3.1.9',
     'glob@>=10.2.0 <10.5.0': '10.5.0',
     'hono@<4.13.13': '4.13.13',
     'ip-address@<=10.7.3': '10.7.4',
@@ -159,7 +159,7 @@ test('security overrides cover every locked resolution at the reviewed official 
     'smol-toml@<1.9.0': '1.9.0',
     'source-map-js@>=1.0.0 <1.2.2': '1.2.2',
     'undici@>=7.0.0 <7.29.1': '7.29.1',
-    'undici@>=8.0.0 <8.10.2': '8.10.2',
+    'undici@>=8.0.0 <8.12.2': '8.12.2',
     'vite@>=8.2.0 <8.2.4': '8.2.4',
   };
   const lockedOverrides = Object.fromEntries(
@@ -174,7 +174,7 @@ test('security overrides cover every locked resolution at the reviewed official 
     for (const [name, versions] of Object.entries({
       'brace-expansion': ['1.1.21', '2.1.7', '5.0.12'],
       devalue: ['5.9.3'],
-      'fast-uri': ['3.1.8'],
+      'fast-uri': ['3.1.9'],
       glob: ['10.5.0', '13.0.6'],
       hono: ['4.13.13'],
       'ip-address': ['10.7.4'],
@@ -186,7 +186,7 @@ test('security overrides cover every locked resolution at the reviewed official 
       sharp: ['0.35.5'],
       'smol-toml': ['1.9.0'],
       'source-map-js': ['1.2.2'],
-      undici: ['6.29.0', '7.29.1', '8.10.2'],
+      undici: ['6.29.0', '7.29.1', '8.12.2'],
       vite: ['8.2.4'],
       'body-parser': ['2.4.0'],
     })) {
