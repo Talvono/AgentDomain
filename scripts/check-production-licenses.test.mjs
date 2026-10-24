@@ -111,22 +111,47 @@ test('repository pins reviewed production dependencies and excludes unsafe graph
   assert.doesNotMatch(workflow, /deny-licenses:/);
 });
 
-test('the only audit exception is the unpatched zod 3 advisory, and only while zod 3 is locked', async () => {
+test('the only audit exception is zod 3 inside upstream x402, never a workspace package', async () => {
   const manifest = JSON.parse(await readFile(path.join(repoRoot, 'package.json'), 'utf8'));
   const lockfile = await readFile(path.join(repoRoot, 'pnpm-lock.yaml'), 'utf8');
   assert.deepEqual(manifest.pnpm.auditConfig, { ignoreGhsas: ['GHSA-mrhx-c7xc-m3w5'] });
+  assert.equal(manifest.pnpm.overrides['@reown/appkit-wallet>zod'], '4.6.7');
   const zod = [...lockfile.matchAll(/^ {2}zod@(\d+)\.(\d+)\.(\d+):/gm)].map(([, ...parts]) =>
     parts.map(Number),
-  );
-  assert.ok(
-    zod.some(([major]) => major < 4),
-    'No zod 3 remains: remove the GHSA-mrhx-c7xc-m3w5 audit exception and its CONTRIBUTING note.',
   );
   for (const [major, minor, patch] of zod.filter(([major]) => major >= 4))
     assert.ok(
       minor > 6 || (minor === 6 && patch >= 6),
       `zod ${major}.${minor}.${patch} must be patched`,
     );
+  // Every workspace package resolves a patched zod 4.
+  const importers = lockfile.slice(
+    lockfile.indexOf('\nimporters:\n'),
+    lockfile.indexOf('\npackages:\n'),
+  );
+  const workspaceZod = [...importers.matchAll(/zod:\n\s+specifier: [^\n]+\n\s+version: ([^\n]+)/g)];
+  assert.ok(workspaceZod.length >= 7);
+  for (const [, version] of workspaceZod)
+    assert.match(version, /^4\.(?:6\.(?:[6-9]|\d{2,})|(?:[7-9]|\d{2,})\.\d+)$/);
+  // zod 3 may remain only inside Coinbase x402 (latest 2.28.0 still requires zod ^3.24.2)
+  // and abitype as its optional peer. Remove the exception once x402 moves to zod 4.
+  const snapshots = lockfile.slice(lockfile.indexOf('\nsnapshots:\n'));
+  const zod3Consumers = new Set(
+    snapshots
+      .split(/\n(?=  \S)/)
+      .filter((block) => /\n\s+zod: 3\./.test(block))
+      // Snapshot keys look like '@x402/core@2.25.0' or abitype@1.2.3(peer@x); keep the name.
+      .map((block) => /^'?(@?[^@'\s]+)@/.exec(block.split('\n')[0].trim())?.[1]),
+  );
+  assert.ok(
+    zod.some(([major]) => major < 4),
+    'No zod 3 remains: remove the GHSA-mrhx-c7xc-m3w5 audit exception and its CONTRIBUTING note.',
+  );
+  assert.deepEqual(
+    [...zod3Consumers].sort(),
+    ['@x402/core', '@x402/evm', '@x402/extensions', 'abitype'],
+    'Only upstream x402 may still depend on zod 3',
+  );
 });
 
 test('security overrides cover every locked resolution at the reviewed official versions', async () => {

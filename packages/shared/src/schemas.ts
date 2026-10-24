@@ -289,7 +289,7 @@ export const registrationParamsSchema = z
         framework: optionalMetadataString(80),
         capabilities: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
         x402Endpoint: optionalMetadataUrl(2048),
-        socials: z.record(z.string().trim().max(2048)).optional(),
+        socials: z.record(z.string(), z.string().trim().max(2048)).optional(),
       })
       .optional(),
     wallet: addressSchema,

@@ -874,7 +874,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             years: z.number().int().min(1).max(10).default(1),
             autoRenew: z.boolean().default(false),
             dnsTarget: z.string().optional(),
-            metadata: z.record(z.any()).optional(),
+            metadata: z.record(z.string(), z.any()).optional(),
           })
           .parse(args);
         const account = privateKeyToAccount(AGENT_PRIVATE_KEY as `0x${string}`);
@@ -1023,7 +1023,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             type: z.enum(DNS_RECORD_TYPES),
             name: z.string(),
             value: z.string().optional(),
-            data: z.record(z.unknown()).optional(),
+            data: z.record(z.string(), z.unknown()).optional(),
             ttl: z.number().default(3600),
             priority: z.number().optional(),
           })
@@ -1044,7 +1044,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             type: z.enum(DNS_RECORD_TYPES).optional(),
             name: z.string().optional(),
             value: z.string().optional(),
-            data: z.record(z.unknown()).optional(),
+            data: z.record(z.string(), z.unknown()).optional(),
             ttl: z.number().optional(),
             priority: z.number().optional(),
           })

@@ -48,11 +48,13 @@ for a locked major version. It must name one advisory and have a test that fails
 once the exception is no longer needed.
 
 The only current exception is `GHSA-mrhx-c7xc-m3w5`, a memory-exhaustion issue
-in zod when validating oversized constrained collections. zod 3 has no patched
-release. The shared schemas, the SDK, the frontend and the WalletConnect (Reown)
-dependency still use zod 3. Here zod validates AgentDomain API responses,
-local form input and WalletConnect frames, not untrusted bulk input. Remove the
-exception once every locked zod is 4.6.6 or newer.
+in zod array validation, patched in 4.6.6. Every workspace package uses zod 4.6.7.
+WalletConnect's Reown wallet code is overridden to zod 4.6.7, since it uses only
+zod-4-compatible APIs. The exception covers zod 3 inside Coinbase's x402
+packages, whose latest release (2.28.0) still requires zod ^3.24.2 and uses APIs
+removed in zod 4. Here zod validates x402 payment payloads, not untrusted bulk
+input. The AgentKit plugin imports `zod/v3` from the patched package because
+AgentKit consumes zod 3 schemas. Remove the exception once x402 moves to zod 4.
 
 ## Public release completion
 
