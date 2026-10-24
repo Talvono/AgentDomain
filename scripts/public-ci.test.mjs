@@ -38,10 +38,10 @@ const buildConfig = {
   hasOverrides: false,
   adapter: {
     name: '@opennextjs/cloudflare',
-    version: '1.20.10',
-    dependencies: { '@opennextjs/aws': '4.1.9' },
+    version: '1.20.12',
+    dependencies: { '@opennextjs/aws': '4.1.11' },
   },
-  adapterBuild: { name: '@opennextjs/aws', version: '4.1.9' },
+  adapterBuild: { name: '@opennextjs/aws', version: '4.1.11' },
 };
 for (const path of [
   'apps/frontend/open-next.config.ts',
