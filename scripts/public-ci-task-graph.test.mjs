@@ -9,14 +9,14 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const originalManifestHashes = {
-  'apps/docs': '200d9ba751eada947a7489dcfc2f7f8c83ab5e120b8f7f21f7525aab00c52d1f',
-  'apps/frontend': '246a692b4147584f21afe515cfcb8f351bda9e983494b57b7e1241f24abe9d61',
-  'packages/shared': 'c59bc56b93599444ad7306a734df7af279eee5c849b141764b08766061fe01a2',
-  'packages/sdk': 'b327d5a85a10543546fd380ddaa044b70620718435c623b2198ee847020c3ee0',
-  'packages/mcp-server': 'd0caa6265e86e767af91dee8c371203b3cb830540d0763e9e63ba908506d9a0e',
-  'packages/agentkit-plugin': '030b912c5fe7dd5ae465aade29dd320f0e7e3dbcccff9f6b09c42a4fea17e1d1',
-  'packages/eliza-plugin': '44e00466e3336d4d9a382c3f5c62375e1374f58cd079717921c104edcb8b2974',
-  'packages/langchain-plugin': '97f8573139e417f84a43c53c1d97f0e504903757cd198cf9220493091cf24f4e',
+  'apps/docs': '77fbb2a614d3c5d12dcb43e8d14b746e40098a11e0df28cc0a6736647c8232ca',
+  'apps/frontend': '40d1e571222f79c793d46903b875958ba46e530160c01237b3ac94851b299153',
+  'packages/shared': 'bb1c336c27d58e7deb65f62e15b7b1c7b25f10fd8f00e53ea7511af950faef22',
+  'packages/sdk': 'b1bb2c27b0e5df54aff09c0e29e4b22c05355c1e09a14b159ed443c925137eab',
+  'packages/mcp-server': '25b77136de0e5dd093f7730fafeeeb4a3119768c5418e68dcbdd8a8cffb615ac',
+  'packages/agentkit-plugin': 'eccccad6a4dc88260abba672bc58fc0a6332b4d3db2aca9a61dae350183ef4b7',
+  'packages/eliza-plugin': '549c61e0e604fa10195cd82c5109ad1fb3d525c77ac2fa2faa897af2f170c928',
+  'packages/langchain-plugin': 'd96525e9ef5efbce32354a1e660a9953ae354057010c406f253a3c7a1dae1a08',
 };
 const originalTurboHash = 'c2d5658becbfcb5a1e4dfa2d3e9b1a93ac0630afbb48485daa24e48d88756fdb';
 const coreTasks = ['lint:ci', 'typecheck:ci', 'test:ci', 'build:ci'];

@@ -1,4 +1,7 @@
-import { z } from 'zod';
+// AgentKit and its framework extensions still consume zod 3 schemas, so action schemas use
+// the zod 3 API shipped inside the patched zod 4 package. Shared zod 4 schemas validate
+// the records again before any request is sent.
+import { z } from 'zod/v3';
 import { AgentDomain, encodeSetAutoRenewCalldata } from '@agentdomain/sdk';
 import {
   DNS_RECORD_TYPES,
@@ -148,9 +151,23 @@ const DeleteDnsSchema = z.object({
   recordId: z.string().min(1),
 });
 
+const DnsBatchRecordSchema = z
+  .object({
+    type: DnsRecordTypeSchema,
+    name: z.string().min(1).max(253),
+    value: z.string().min(1).max(65_535).optional(),
+    data: z.record(z.unknown()).optional(),
+    ttl: z.number().int().min(60).max(3600).optional(),
+    priority: z.number().int().min(0).max(65_535).nullable().optional(),
+  })
+  .refine((record) => record.value !== undefined || record.data !== undefined, {
+    message: 'Provide structured data or the legacy value field',
+    path: ['data'],
+  });
+
 const ChangeDnsSchema = z.object({
   agentId: z.string().min(1),
-  records: z.array(dnsRecordSchema).min(1).max(200),
+  records: z.array(DnsBatchRecordSchema).min(1).max(200),
   mode: z.enum(['merge', 'replace']).default('merge'),
   dryRun: z.boolean().default(true),
   baseRevision: z.string().length(64).optional(),
@@ -624,11 +641,13 @@ export class AgentDomainActionProvider {
 
   private async changeDns(walletProvider: WalletProvider, args: z.infer<typeof ChangeDnsSchema>) {
     const { ad } = this.createAgentDomain(walletProvider);
+    // The shared contract is authoritative for each record type's structured data.
+    const records = args.records.map((record) => dnsRecordSchema.parse(record) as DnsRecordInput);
     const result = args.dryRun
-      ? await ad.previewDnsBatch(args.agentId, args.records as DnsRecordInput[], args.mode)
+      ? await ad.previewDnsBatch(args.agentId, records, args.mode)
       : await ad.applyDnsBatch(
           args.agentId,
-          args.records as DnsRecordInput[],
+          records,
           requireDnsRevision(args.baseRevision),
           args.mode,
         );

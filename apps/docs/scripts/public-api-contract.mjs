@@ -15,7 +15,7 @@ import {
   registrationResultSchema,
   searchQuerySchema,
 } from '@agentdomain/shared';
-import { zodToJsonSchema } from 'zod-to-json-schema';
+import { z } from 'zod';
 
 export const API_ORIGIN = 'https://api.agentdomain.app';
 export const API_BASE = `${API_ORIGIN}/api/v1`;
@@ -91,8 +91,14 @@ export const HTTP_SUCCESS_CONTRACT = {
   deleteEmailBlocklistEntry: { 200: 'EmailBlockDeleteResponse' },
 };
 
+// Request-shaped (input) schemas, inlined, in the OpenAPI 3.0 dialect the catalog publishes.
 function convert(schema) {
-  return zodToJsonSchema(schema, { target: 'openApi3', $refStrategy: 'none' });
+  const { $schema: _dialect, ...json } = z.toJSONSchema(schema, {
+    target: 'openapi-3.0',
+    io: 'input',
+    unrepresentable: 'any',
+  });
+  return json;
 }
 
 // Keep the published response envelope, but do not expand legacy provider-specific snapshot fields.
