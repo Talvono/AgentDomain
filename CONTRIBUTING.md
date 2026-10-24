@@ -39,6 +39,21 @@ Before opening a pull request:
 Never put a secret in browser-delivered configuration or client-side code. Keep
 environment files untracked and committed examples value-free.
 
+## Dependency advisories
+
+`pnpm audit --prod --audit-level high` must pass. Fix an advisory by upgrading
+or overriding to the first patched version. An audit exception
+(`pnpm.auditConfig.ignoreGhsas`) is allowed only when no patched release exists
+for a locked major version. It must name one advisory and have a test that fails
+once the exception is no longer needed.
+
+The only current exception is `GHSA-mrhx-c7xc-m3w5`, a memory-exhaustion issue
+in zod when validating oversized constrained collections. zod 3 has no patched
+release. The shared schemas, the SDK, the frontend and the WalletConnect (Reown)
+dependency still use zod 3. Here zod validates AgentDomain API responses,
+local form input and WalletConnect frames, not untrusted bulk input. Remove the
+exception once every locked zod is 4.6.6 or newer.
+
 ## Public release completion
 
 Every authorized package version release includes the public tag and GitHub

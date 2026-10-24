@@ -9,8 +9,8 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('..', import.meta.url));
 const digest = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const originalManifestHashes = {
-  'apps/docs': 'affc5a8989455a0f2400f738379438db630ed65d2e37f69768c5f930cfd406df',
-  'apps/frontend': '6574377970745719e884691391304f83cce3baf69328718e27281f185e5858cf',
+  'apps/docs': '200d9ba751eada947a7489dcfc2f7f8c83ab5e120b8f7f21f7525aab00c52d1f',
+  'apps/frontend': '246a692b4147584f21afe515cfcb8f351bda9e983494b57b7e1241f24abe9d61',
   'packages/shared': 'c59bc56b93599444ad7306a734df7af279eee5c849b141764b08766061fe01a2',
   'packages/sdk': 'b327d5a85a10543546fd380ddaa044b70620718435c623b2198ee847020c3ee0',
   'packages/mcp-server': 'd0caa6265e86e767af91dee8c371203b3cb830540d0763e9e63ba908506d9a0e',

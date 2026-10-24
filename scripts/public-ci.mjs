@@ -69,14 +69,14 @@ export function publicBuildArgs(manifest, frontend, config) {
     matchesBuildScripts(manifest, rootBuildScripts) &&
     frontend?.name === '@agentdomain/frontend' &&
     matchesBuildScripts(frontend, frontendBuildScripts) &&
-    frontend.devDependencies?.['@opennextjs/cloudflare'] === '1.20.10' &&
+    frontend.devDependencies?.['@opennextjs/cloudflare'] === '1.20.12' &&
     frontend.devDependencies?.wrangler === '4.148.0' &&
-    frontend.dependencies?.next === '16.3.8' &&
+    frontend.dependencies?.next === '16.4.2' &&
     config?.adapter?.name === '@opennextjs/cloudflare' &&
-    config.adapter.version === '1.20.10' &&
-    config.adapter.dependencies?.['@opennextjs/aws'] === '4.1.9' &&
+    config.adapter.version === '1.20.12' &&
+    config.adapter.dependencies?.['@opennextjs/aws'] === '4.1.11' &&
     config.adapterBuild?.name === '@opennextjs/aws' &&
-    config.adapterBuild.version === '4.1.9' &&
+    config.adapterBuild.version === '4.1.11' &&
     config?.hasOverrides === false &&
     Object.entries(buildConfigHashes).every(
       ([path, hash]) =>
