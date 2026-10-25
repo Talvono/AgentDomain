@@ -7,7 +7,7 @@ ElizaOS actions for AgentDomain's agent-native identity and communications infra
 Install the version used by these examples:
 
 ```bash
-npm install @agentdomain/eliza-plugin@0.11.2 @elizaos/core
+npm install @agentdomain/eliza-plugin@0.12.0 @elizaos/core
 ```
 
 ## Add the plugin

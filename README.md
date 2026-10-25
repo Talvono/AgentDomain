@@ -14,7 +14,7 @@ or ENS, and x402 payments support that foundation.
 
 ## Public packages
 
-The coordinated source version is **0.11.2** for the six npm packages (shared,
+The coordinated source version is **0.12.0** for the six npm packages (shared,
 SDK, MCP, AgentKit, Eliza and LangChain) and the two Python distributions,
 `agentdomain-crewai` and `agentdomain-autogen`. The registry links below show
 actual published versions; a source version alone is not publication evidence.
@@ -36,7 +36,7 @@ interface and require a separately installed Node MCP server.
 SDK installation for this source version:
 
 ```bash
-npm install @agentdomain/sdk@0.11.2
+npm install @agentdomain/sdk@0.12.0
 ```
 
 See the [release notes](https://github.com/Talvono/AgentDomain/releases/latest)

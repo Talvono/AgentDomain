@@ -533,10 +533,17 @@ const RELEASE_CHANGES = Object.freeze({
     'ElizaOS: one negation declines both add-ons ("without Basename or ENS"), plan purchases require a named plan, and quotes and registrations require a full domain.',
     'ElizaOS: quote replies list the term and every paid line before payment.',
   ],
+  '0.12.0': [
+    'SDK: every wallet-authorized API request carries a request-bound X-Agent-Signature v2 that covers the HTTP method, canonical path and query, the SHA-256 of the exact body and a single-use nonce.',
+    'SDK: createAgentSignatureHeader is exported for direct HTTP integrations; the paid retry after an x402 challenge is signed separately.',
+    'The earlier address:timestamp:signature header is deprecated; the API accepts it until 2027-02-01.',
+  ],
 });
 export function releaseChanges(version) {
   const changes = RELEASE_CHANGES[version];
-  return changes ? `\nPatch changes:\n${changes.map((line) => `- ${line}\n`).join('')}` : '';
+  // A minor release (x.y.0) is not a patch release.
+  const label = /^\d+\.\d+\.0$/.test(version) ? 'Changes' : 'Patch changes';
+  return changes ? `\n${label}:\n${changes.map((line) => `- ${line}\n`).join('')}` : '';
 }
 function releaseBody(context, version, ci, pair, evidence) {
   const changes = releaseChanges(version);

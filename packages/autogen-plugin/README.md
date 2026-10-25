@@ -7,15 +7,15 @@ are compatibility imports and launchers, not a second implementation.
 
 ## Installation
 
-Version **0.11.2** uses the separately installed
-`@agentdomain/mcp-server@0.11.2` bridge.
+Version **0.12.0** uses the separately installed
+`@agentdomain/mcp-server@0.12.0` bridge.
 The runtime never installs npm packages or silently falls back to another version.
 
 Install both packages:
 
 ```bash
-python -m pip install agentdomain-autogen==0.11.2
-npm install --ignore-scripts --no-audit --no-fund @agentdomain/mcp-server@0.11.2
+python -m pip install agentdomain-autogen==0.12.0
+npm install --ignore-scripts --no-audit --no-fund @agentdomain/mcp-server@0.12.0
 ```
 
 Python 3.10+ is required; qualification uses Python 3.12. The package pins official
@@ -129,7 +129,7 @@ python -m pip install \
   -r packages/mcp-server/examples/autogen/framework-requirements.txt \
   -c packages/mcp-server/examples/autogen/constraints.txt
 python -m pip install --force-reinstall --no-deps --no-index \
-  .qa/autogen-package/dist/agentdomain_autogen-0.11.2-py3-none-any.whl
+  .qa/autogen-package/dist/agentdomain_autogen-0.12.0-py3-none-any.whl
 python -m pip check
 python -B packages/autogen-plugin/test/verify_artifacts.py .qa/autogen-package/dist
 ```
