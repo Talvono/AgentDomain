@@ -31,6 +31,49 @@ Protected agent operations accept one of these public authentication methods:
 An API key is limited to its assigned agent. Never place an API key in browser source, a public
 repository, or a URL query string.
 
+### Wallet request signatures
+
+Wallet authorization uses the `X-Agent-Signature` header. Each signature covers one exact
+request and can be used once:
+
+```text
+X-Agent-Signature: v2:<walletAddress>:<timestampMs>:<nonce>:<signature>
+```
+
+The wallet signs this EIP-191 (`personal_sign`) message, with lines joined by `\n` and no
+trailing newline:
+
+```text
+AgentDomain API request
+version: 2
+audience: agentdomain.app
+method: <HTTP method in upper case>
+target: <canonical path and query>
+body-sha256: <lowercase hex SHA-256 of the exact body bytes>
+timestamp: <timestampMs>
+nonce: <nonce>
+```
+
+- `audience` is `agentdomain.app` for every `agentdomain.app` API host.
+- `target` is the URL path with each segment decoded and re-encoded using only RFC 3986
+  unreserved characters. Query parameters are encoded the same way, then sorted by name and
+  value. The fragment is excluded.
+- `body-sha256` covers the bytes actually sent. Requests without a body use the digest of the
+  empty string.
+- `nonce` is 32 lowercase hex characters (128 random bits). It is accepted once per wallet.
+- `timestampMs` is Unix milliseconds. Signatures expire after five minutes and are rejected
+  if they are more than 60 seconds ahead of the server clock.
+
+Sign every request separately, including the paid retry after an x402 challenge. A reused,
+expired or mismatched signature returns `401` with code `AGENT_SIGNATURE_REJECTED` and a
+`details.reason`. If replay protection is temporarily unavailable, the API returns `503` with
+`Retry-After`. Signatures from externally owned accounts (EOAs) are supported. Smart-contract
+wallet signatures are not.
+
+The official SDK (`createAgentSignatureHeader`) implements this contract. The earlier
+`<walletAddress>:<timestampMs>:<signature>` format is deprecated. The API stops accepting it
+on 2027-02-01.
+
 ## Idempotency
 
 Endpoints that document `Idempotency-Key` bind the key to the operation and normalized request.

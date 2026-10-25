@@ -19,6 +19,7 @@ import {
   type RegistrationResult,
 } from '@agentdomain/shared';
 import type { RegisterArgs } from './index.js';
+import { createAgentSignatureHeader, type AgentSignatureRequest } from './agent-signature.js';
 
 export type {
   RegistrationAccepted,
@@ -123,7 +124,8 @@ class RegistrationTransportError extends Error {}
 
 const REQUEST_TIMEOUT_MS = 60_000;
 const WAIT_TIMEOUT_MS = 10 * 60_000;
-const SIGNATURE_CACHE_MS = 4 * 60_000;
+/** A request signature must reach the API well inside its five-minute validity. */
+const SIGNATURE_SIGNING_LIMIT_MS = 4 * 60_000;
 const POLL_INTERVAL_MS = 5_000;
 const REGISTRATION_LIST_DEFAULT_LIMIT = 20;
 const REGISTRATION_LIST_MAX_LIMIT = 50;
@@ -150,9 +152,6 @@ interface RegistrationClientOptions {
 }
 
 export class RegistrationClient {
-  private signature?: { address: string; issuedAt: number; expiresAt: number; header: string };
-  private signing?: { address: string; promise: Promise<string> };
-
   constructor(private readonly options: RegistrationClientOptions) {}
 
   async submit(
@@ -193,11 +192,18 @@ export class RegistrationClient {
     const scope = deadline(options.signal, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
     try {
       const expectedPayer = this.expectedPayer(options.expectedPayer, wallet);
-      const auth = await this.readHeaders(scope.signal, expectedPayer);
-      const send = (paymentHeaders: Record<string, string> = {}) =>
+      const registerUrl = this.url('/agents/register');
+      // Each POST carries its own single-use signature over this exact body.
+      const sign = () =>
+        this.signedHeaders(scope.signal, expectedPayer, {
+          method: 'POST',
+          url: registerUrl,
+          body,
+        });
+      const send = (auth: Record<string, string>, paymentHeaders: Record<string, string> = {}) =>
         withinSignal(scope.signal, () => {
           unresolvedPost = true;
-          return fetch(this.url('/agents/register'), {
+          return fetch(registerUrl, {
             method: 'POST',
             headers: {
               ...auth,
@@ -211,7 +217,7 @@ export class RegistrationClient {
             signal: scope.signal,
           });
         });
-      let response = await send();
+      let response = await send(await sign());
       if (response.status === 402) {
         unresolvedPost = false;
         if (!this.options.walletClient)
@@ -221,9 +227,10 @@ export class RegistrationClient {
         const paymentHeaders = await withinSignal(scope.signal, () =>
           this.options.createPaymentHeaders(response, this.options.walletClient!),
         );
+        const paidAuth = await sign();
         // Exactly one paid POST follows an explicit challenge. No transport retry is safe here.
         paymentSubmitted = true;
-        response = await send(paymentHeaders);
+        response = await send(paidAuth, paymentHeaders);
       }
       const data: unknown = await withinSignal(scope.signal, () => response.json());
       handle = this.handleFromResponse(data, handle);
@@ -581,7 +588,10 @@ export class RegistrationClient {
     url.searchParams.set('expectedPayer', expectedPayer);
     const scope = deadline(options.signal, options.timeoutMs ?? REQUEST_TIMEOUT_MS);
     try {
-      const headers = await this.readHeaders(scope.signal, expectedPayer);
+      const headers = await this.signedHeaders(scope.signal, expectedPayer, {
+        method: 'GET',
+        url: url.toString(),
+      });
       try {
         const response = await withinSignal(scope.signal, () =>
           // Trusted constructor base + encoded ID/query; server status URLs are checked, never fetched.
@@ -651,48 +661,30 @@ export class RegistrationClient {
     return payer;
   }
 
-  private async readHeaders(
+  /** Sign one request; v2 signatures are single-use, so they are never cached. */
+  private async signedHeaders(
     signal: AbortSignal,
     expectedPayer: Address,
+    request: AgentSignatureRequest,
   ): Promise<Record<string, string>> {
     signal.throwIfAborted();
     const wallet = this.options.walletClient;
     if (this.options.authentication === 'session' || !wallet) return {};
-    const address = wallet.account.address.toLowerCase();
-    if (
-      this.signature?.address === address &&
-      this.signature.issuedAt <= Date.now() &&
-      this.signature.expiresAt > Date.now()
-    ) {
-      return { 'X-Agent-Signature': this.signature.header };
+    const account = wallet.account;
+    const timestamp = Date.now();
+    const header = await withinSignal(signal, () =>
+      createAgentSignatureHeader(
+        {
+          address: account.address.toLowerCase(),
+          signMessage: (message) => wallet.signMessage({ account, message }),
+        },
+        request,
+        { timestamp },
+      ),
+    );
+    if (Date.now() >= timestamp + SIGNATURE_SIGNING_LIMIT_MS || Date.now() < timestamp) {
+      throw new Error('Registration request signature expired while signing.');
     }
-    if (!this.signing || this.signing.address !== address) {
-      const timestamp = Date.now();
-      const promise = wallet
-        .signMessage({ account: wallet.account, message: `agentdomain.app api auth ${timestamp}` })
-        .then((signature) => {
-          if (Date.now() >= timestamp + SIGNATURE_CACHE_MS || Date.now() < timestamp) {
-            throw new Error('Registration read signature expired while signing.');
-          }
-          const header = `${address}:${timestamp}:${signature}`;
-          this.signature = {
-            address,
-            header,
-            issuedAt: timestamp,
-            expiresAt: timestamp + SIGNATURE_CACHE_MS,
-          };
-          return header;
-        });
-      const signing = { address, promise };
-      this.signing = signing;
-      void promise
-        .finally(() => {
-          if (this.signing === signing) this.signing = undefined;
-        })
-        .catch(() => {});
-    }
-    const signing = this.signing.promise;
-    const header = await withinSignal(signal, () => signing);
     if (wallet.account.address.toLowerCase() !== expectedPayer.toLowerCase()) {
       throw new Error('The signing wallet changed during authentication.');
     }

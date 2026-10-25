@@ -289,8 +289,9 @@ unknown root or nested fields are not echoed to callers.
 `getRegistration(id)` and `getRegistrations({ limit, offset })` require the **payer**
 wallet, not a different designated NFT owner. They never send an agent API key or
 payment header as authorization. Lists default to 20 entries and accept at most 50.
-With a wallet client, they omit cookies and use `X-Agent-Signature`
-and reuse its in-memory signature for up to four minutes, then sign afresh. Rejected
+With a wallet client, they omit cookies and sign every request with a single-use,
+request-bound `X-Agent-Signature` (method, URL, body digest and nonce). Signatures are
+never cached, so browser apps should prefer `registrationAuth: 'session'`. Rejected
 signing and authorization failures stop waiting instead of prompting repeatedly.
 Every status/list/recovery read sends `expectedPayer` from the signer, a recovery
 handle, or an explicit option. It is an identity consistency check, not authentication.

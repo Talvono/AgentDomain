@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, it } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { AgentDomain } from '@agentdomain/sdk';
+import {
+  AgentDomain,
+  agentRequestBodySha256,
+  agentSignatureAudience,
+  buildAgentSignatureMessage,
+  canonicalAgentRequestTarget,
+} from '@agentdomain/sdk';
 import { createWalletClient, custom, recoverMessageAddress } from 'viem';
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import { base } from 'viem/chains';
@@ -68,9 +74,18 @@ before(async () => {
       assert.equal(url.searchParams.get('expectedPayer'), account.address.toLowerCase());
       const header = request.headers['x-agent-signature'];
       assert.equal(typeof header, 'string');
-      const [claimed, issued, signature] = header.split(':');
+      const [version, claimed, issued, nonce, signature] = header.split(':');
+      assert.equal(version, 'v2');
+      // Rebuild from the URL this server actually received, as the API does.
       const recovered = await recoverMessageAddress({
-        message: `agentdomain.app api auth ${issued}`,
+        message: buildAgentSignatureMessage({
+          audience: agentSignatureAudience(url.host),
+          method: request.method,
+          target: canonicalAgentRequestTarget(url),
+          bodySha256: agentRequestBodySha256(),
+          timestamp: Number(issued),
+          nonce,
+        }),
         signature,
       });
       assert.equal(recovered, account.address);
