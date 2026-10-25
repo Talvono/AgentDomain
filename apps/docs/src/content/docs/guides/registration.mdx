@@ -40,7 +40,7 @@ can change, so do not cache a quote as a guaranteed reservation.
 
 ## 3. Register once
 
-Use SDK 0.11.2, which includes the single request-bound EIP-3009 payment-signature fix. Send
+Use SDK 0.12.0, which includes the single request-bound EIP-3009 payment-signature fix. Send
 `Prefer: respond-async` and submit the exact challenged request once. The initial `402` includes
 an opaque `accepts[0].extra.registrationQuote` string and an ISO `quoteExpiresAt` in the same
 `extra` object. Echo the full selected requirement as `accepted` unchanged, including all metadata;
@@ -61,7 +61,7 @@ payment proof. The payer may differ from the designated NFT owner. Reuse a fresh
 between polls instead of prompting on every request. A timeout or abort stops local waiting, not
 the accepted purchase. Never automatically resubmit after a lost response.
 
-SDK 0.11.2 reports `RegistrationPaymentRejectedError` only for an explicit HTTP `4xx` response
+SDK 0.12.0 reports `RegistrationPaymentRejectedError` only for an explicit HTTP `4xx` response
 other than `408` satisfying the public rejection schema, including
 `paymentSubmission: { status: 'rejected', settlementAttempted: false }`. It exposes code
 `REGISTRATION_PAYMENT_REJECTED`, `serverCode`, `message`, `handle`, and

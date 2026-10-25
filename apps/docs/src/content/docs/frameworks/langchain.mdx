@@ -10,16 +10,16 @@ plain objects that only resemble tool definitions.
 
 ## Native JavaScript tools
 
-`@agentdomain/langchain-plugin` **0.11.2 is published on npm**. Install the pinned
+`@agentdomain/langchain-plugin` **0.12.0 is published on npm**. Install the pinned
 release with its framework peer:
 
 ```bash
-npm install @agentdomain/langchain-plugin@0.11.2 @langchain/core@^1.2.11
+npm install @agentdomain/langchain-plugin@0.12.0 @langchain/core@^1.2.11
 ```
 
-SDK and MCP **0.11.2 are published on npm** as well. All three were published by
+SDK and MCP **0.12.0 are published on npm** as well. All three were published by
 GitHub Actions OIDC with signed provenance; the
-[publication follow-up](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.2)
+[publication follow-up](https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.12.0)
 records the verified registry artifacts. The earlier 0.11.0 LangChain package was
 published locally on September 14, 2026 without OIDC provenance.
 
@@ -86,7 +86,7 @@ An explicit session keeps related calls in the same subprocess and closes it
 when the context exits. The adapter dependency must be qualified independently
 of the JavaScript plugin; it is not bundled into an npm Python runtime.
 
-This Python bridge can use the published MCP 0.11.2 without the JavaScript
+This Python bridge can use the published MCP 0.12.0 without the JavaScript
 plugin. Source builds remain available for development.
 Point `server_path` below to its reviewed local
 `node_modules/@agentdomain/mcp-server/dist/index.js` entry or a source build.

@@ -3,13 +3,13 @@ title: Quickstart
 description: Quote and register an AgentDomain identity with the TypeScript SDK and a connected wallet.
 ---
 
-This example uses the published `@agentdomain/sdk` 0.11.2 on Base mainnet. Supply a wallet account from your
+This example uses the published `@agentdomain/sdk` 0.12.0 on Base mainnet. Supply a wallet account from your
 application's secure wallet integration; never commit wallet material to source control.
 
 ## Install
 
 ```bash
-npm install @agentdomain/sdk@0.11.2 viem@2.56.3
+npm install @agentdomain/sdk@0.12.0 viem@2.56.3
 ```
 
 For workspace development, build the shared and SDK packages from the reviewed
@@ -83,7 +83,7 @@ export async function registerAgent(account: PrivateKeyAccount) {
 }
 ```
 
-SDK 0.11.2 creates one request-bound EIP-3009 payment signature and submits the exact challenged
+SDK 0.12.0 creates one request-bound EIP-3009 payment signature and submits the exact challenged
 request once. It preserves the complete accepted requirement, including the opaque
 `extra.registrationQuote` and ISO `extra.quoteExpiresAt` from the initial `402`. It validates the
 bound Base USDC payment terms and optional quote expiry before signing. Wallet authentication is
@@ -108,7 +108,7 @@ resuming the waiter. No match is not proof that no payment occurred. Timeout or 
 waiting, not an accepted purchase; do not automatically start another checkout. A server-reported
 failed or refunded status raises `RegistrationFailedError`, which also does not authorize repayment.
 
-SDK 0.11.2 throws `RegistrationPaymentRejectedError` only for an explicit HTTP `4xx` response
+SDK 0.12.0 throws `RegistrationPaymentRejectedError` only for an explicit HTTP `4xx` response
 other than `408` satisfying the public rejection schema, including
 `paymentSubmission: { status: 'rejected', settlementAttempted: false }`. Its code is
 `REGISTRATION_PAYMENT_REJECTED`; it exposes `serverCode`, `message`, `handle`, and

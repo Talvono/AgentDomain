@@ -66,7 +66,7 @@ test('the source catalog records all eight workspace packages without claiming r
   // Publication claims name their exact release so later source versions never inherit them.
   assert.match(
     readme,
-    /All eight\s+0.11.2 packages were published by GitHub Actions OIDC, and their registry bytes\s+and signed provenance were verified/,
+    /All eight\s+0.12.0 packages were published by GitHub Actions OIDC, and their registry bytes\s+and signed provenance were verified/,
   );
   assert.match(
     readme,
@@ -84,11 +84,11 @@ test('retired root records are absent and release evidence remains linked', asyn
   const releaseNotes = new Set(
     [...readme.matchAll(/\[release notes\]\(([^)]+)\)/g)].map(([, url]) => url),
   );
-  assert.ok(releaseNotes.has('https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.2'));
+  assert.ok(releaseNotes.has('https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.12.0'));
   for (const target of releaseNotes)
     assert.ok(
       [
-        'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.2',
+        'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.12.0',
         'https://github.com/Talvono/AgentDomain/releases/latest',
       ].includes(target),
       `Unexpected release evidence link: ${target}`,
@@ -118,17 +118,17 @@ test('AI disclosure states human control without event-submission claims', async
   assert.doesNotMatch(source, /ETHOnline|ETHGlobal|hackathon|submission|post-event|demo/i);
 });
 
-test('inspection docs pin verified 0.11.2 releases without treating the source catalog as registry proof', async () => {
+test('inspection docs pin verified 0.12.0 releases without treating the source catalog as registry proof', async () => {
   const sdk = await doc('typescript');
   const mcp = await doc('mcp');
-  assert.match(sdk, /npm install @agentdomain\/sdk@0.11.2 viem@2\.56\.3/);
-  assert.match(mcp, /npm install --global @agentdomain\/mcp-server@0.11.2/);
-  assert.match(sdk, /0.11.2 is published on npm/);
-  assert.match(mcp, /0.11.2 is published on npm/);
+  assert.match(sdk, /npm install @agentdomain\/sdk@0.12.0 viem@2\.56\.3/);
+  assert.match(mcp, /npm install --global @agentdomain\/mcp-server@0.12.0/);
+  assert.match(sdk, /0.12.0 is published on npm/);
+  assert.match(mcp, /0.12.0 is published on npm/);
   assert.match(sdk, /source manifest does not query or establish registry publication/);
   assert.match(mcp, /source metadata, not a\s+registry availability check/);
   for (const source of [sdk, mcp]) {
-    assert.doesNotMatch(source, /0.11.2 is a release candidate/);
+    assert.doesNotMatch(source, /0.12.0 is a release candidate/);
     assert.doesNotMatch(source, /source-build target|new source-checkout (?:feature|export)/);
     assert.doesNotMatch(source, /independent-identity-inspection-source-checkout/);
   }
