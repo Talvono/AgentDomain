@@ -183,7 +183,8 @@ test('security overrides cover every locked resolution at the reviewed official 
     'sharp@<0.35.5': '0.35.5',
     'smol-toml@<1.9.0': '1.9.0',
     'source-map-js@>=1.0.0 <1.2.2': '1.2.2',
-    'undici@>=7.0.0 <7.29.1': '7.29.1',
+    'undici@>=6.0.0 <6.29.1': '6.29.1',
+    'undici@>=7.0.0 <7.30.1': '7.30.1',
     'undici@>=8.0.0 <8.12.2': '8.12.2',
     'vite@>=8.2.0 <8.2.4': '8.2.4',
   };
@@ -211,7 +212,7 @@ test('security overrides cover every locked resolution at the reviewed official 
       sharp: ['0.35.5'],
       'smol-toml': ['1.9.0'],
       'source-map-js': ['1.2.2'],
-      undici: ['6.29.0', '7.29.1', '8.12.2'],
+      undici: ['6.29.1', '7.30.1', '8.12.2'],
       vite: ['8.2.4'],
       'body-parser': ['2.4.0'],
     })) {
