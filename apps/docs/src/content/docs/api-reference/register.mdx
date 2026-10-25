@@ -176,12 +176,13 @@ GET /api/v1/registrations?limit=20&offset=0
 Authenticate using the payer's SIWE session cookie, or:
 
 ```text
-X-Agent-Signature: <payerAddress>:<timestampMs>:<signature>
-Signed message: agentdomain.app api auth <timestampMs>
+X-Agent-Signature: v2:<payerAddress>:<timestampMs>:<nonce>:<signature>
 ```
 
-The timestamp is Unix milliseconds. Agent signatures expire after five minutes; clients should
-reuse a fresh signature during polling and refresh before expiry. A different designated NFT owner,
+The signature is bound to this exact request and can be used once. See
+[wallet request signatures](/api-reference/overview/#wallet-request-signatures) for the signed
+message. Sign each status read and each registration POST separately, including the paid
+retry. A different designated NFT owner,
 agent-scoped API key alone, payment signature, payment identifier, or transaction hash does not
 authorize these reads. Missing authentication returns `401`; another payer's registration and an
 unknown ID both return `404`. Browser sessions must use the same API host for sign-in and reads.

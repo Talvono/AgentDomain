@@ -7,7 +7,7 @@ Public TypeScript contracts shared by AgentDomain clients and integrations.
 Install the version used by these examples:
 
 ```bash
-npm install @agentdomain/shared@0.11.2
+npm install @agentdomain/shared@0.12.0
 ```
 
 ## Usage

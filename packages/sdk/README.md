@@ -17,11 +17,11 @@ API bases must use HTTPS; explicitly configured HTTP `localhost`, `127.0.0.1`, a
 `[::1]` endpoints are allowed for local development. Embedded credentials, query
 strings, and fragments are rejected before requests begin.
 
-These examples use SDK **0.11.2**. An explicit public-source build is also
+These examples use SDK **0.12.0**. An explicit public-source build is also
 documented below for local development.
 
 ```bash
-npm install @agentdomain/sdk@0.11.2 viem@2.56.3
+npm install @agentdomain/sdk@0.12.0 viem@2.56.3
 ```
 
 ## Quick start
@@ -51,9 +51,9 @@ Pass a viem `walletClient` only for wallet-authorized or paid operations. Pass a
 agent-scoped API key only to a trusted server or agent runtime; never expose it
 in browser-delivered configuration.
 
-## Identity inspection (0.11.2)
+## Identity inspection (0.12.0)
 
-These examples pin SDK **0.11.2**. The standalone identity
+These examples pin SDK **0.12.0**. The standalone identity
 and renewal workflows were introduced in 0.10.0, not recreated by this packaging
 release. To build from a reviewed source checkout:
 
@@ -105,7 +105,7 @@ enabled or unspecified are rejected before requests begin. The default client
 also disables CCIP read, preventing RPC-provided offchain URLs and callbacks.
 All reads still require chain ID 8453 and the same safe block.
 
-## Renewal workflow (0.11.2)
+## Renewal workflow (0.12.0)
 
 | Export                                                    | Purpose                                                                     |
 | --------------------------------------------------------- | --------------------------------------------------------------------------- |
@@ -223,11 +223,11 @@ object. The payment payload echoes the full selected requirement as `accepted`,
 including all `extra` fields unchanged. Do not decode or reconstruct the sealed
 quote, drop metadata, or reprice the challenged request.
 
-After a paid request is submitted, SDK 0.11.2 throws the exported
+After a paid request is submitted, SDK 0.12.0 throws the exported
 `RegistrationPaymentRejectedError` only for an HTTP `4xx` response other than
 `408` that satisfies the public `registrationPaymentRejectionSchema`, including
 `paymentSubmission: { status: 'rejected', settlementAttempted: false }`. The schema
-is reusable from `@agentdomain/shared` 0.11.2. An error status or message alone does
+is reusable from `@agentdomain/shared` 0.12.0. An error status or message alone does
 not establish rejection before settlement.
 
 The error exposes `code: 'REGISTRATION_PAYMENT_REJECTED'`, `serverCode`, `message`,
@@ -245,7 +245,7 @@ automatic resend, repricing, or replacement payment signature. See the
 New in 0.9.0: submission, status, waiting, and recovery methods distinguish payment
 acceptance from completed registration. SDK 0.8.x and earlier may treat HTTP `202`
 as a `RegistrationResult`; their return type is not evidence that registration
-finished. Use SDK 0.11.2 or integrate the documented HTTP status contract directly.
+finished. Use SDK 0.12.0 or integrate the documented HTTP status contract directly.
 
 ```ts
 import {
@@ -289,8 +289,9 @@ unknown root or nested fields are not echoed to callers.
 `getRegistration(id)` and `getRegistrations({ limit, offset })` require the **payer**
 wallet, not a different designated NFT owner. They never send an agent API key or
 payment header as authorization. Lists default to 20 entries and accept at most 50.
-With a wallet client, they omit cookies and use `X-Agent-Signature`
-and reuse its in-memory signature for up to four minutes, then sign afresh. Rejected
+With a wallet client, they omit cookies and sign every request with a single-use,
+request-bound `X-Agent-Signature` (method, URL, body digest and nonce). Signatures are
+never cached, so browser apps should prefer `registrationAuth: 'session'`. Rejected
 signing and authorization failures stop waiting instead of prompting repeatedly.
 Every status/list/recovery read sends `expectedPayer` from the signer, a recovery
 handle, or an explicit option. It is an identity consistency check, not authentication.

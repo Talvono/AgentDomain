@@ -39,21 +39,21 @@ py -3.12 -m venv .venv-native
 .venv-native/Scripts/python.exe -m pip install --require-hashes -r requirements.lock
 ```
 
-Install `agentdomain-crewai==0.11.2`
+Install `agentdomain-crewai==0.12.0`
 in that environment as well. To retain the exact hash-locked runtime graph:
 
 ```sh
-.venv-native/bin/python -m pip install --no-deps agentdomain-crewai==0.11.2
+.venv-native/bin/python -m pip install --no-deps agentdomain-crewai==0.12.0
 .venv-native/bin/python -m pip check
 ```
 
 For source development, build `packages/crewai-plugin` with `python -m build` from
 the repository root, then replace the distribution name above with the absolute
-path to `agentdomain_crewai-0.11.2-py3-none-any.whl`. Use the corresponding Windows
+path to `agentdomain_crewai-0.12.0-py3-none-any.whl`. Use the corresponding Windows
 Python path on Windows. The built wheel is required; the example does not
 silently import an uninstalled source tree.
 
-The SDK, MCP and Python package versions used here are **0.11.2**.
+The SDK, MCP and Python package versions used here are **0.12.0**.
 For source validation, build the reviewed public
 checkout from its root:
 
@@ -68,7 +68,7 @@ Consumers can instead install the pinned npm server
 in their own project:
 
 ```sh
-npm install --save-exact @agentdomain/mcp-server@0.11.2
+npm install --save-exact @agentdomain/mcp-server@0.12.0
 ```
 
 Point `--server` to that installation's

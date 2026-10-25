@@ -7,7 +7,7 @@ Coinbase AgentKit action provider for AgentDomain's agent-native identity and co
 Install the version used by these examples:
 
 ```bash
-npm install @agentdomain/agentkit-plugin@0.11.2 @coinbase/agentkit
+npm install @agentdomain/agentkit-plugin@0.12.0 @coinbase/agentkit
 ```
 
 ## Create the provider

@@ -1027,7 +1027,14 @@ test('0.11.2 notes describe the ElizaOS paid-intent fix only', () => {
     assert(notes.includes(text));
   for (const text of ['Canonical Talvono', 'new SDK features', 'email rollout complete'])
     assert(!notes.includes(text));
-  assert.equal(releaseChanges('0.12.0'), '');
+  assert.equal(releaseChanges('0.12.1'), '');
+});
+test('0.12.0 notes describe request-bound signatures as a minor release', () => {
+  const notes = releaseChanges('0.12.0');
+  for (const text of ['\nChanges:\n', 'X-Agent-Signature v2', 'single-use nonce', '2027-02-01'])
+    assert(notes.includes(text));
+  for (const text of ['Patch changes:', 'ElizaOS', 'email rollout complete'])
+    assert(!notes.includes(text));
 });
 test('bounded release and publisher inventories fail closed instead of silently truncating', async () => {
   const f = fixture();
