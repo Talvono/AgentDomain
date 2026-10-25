@@ -173,9 +173,9 @@ test('framework guides pin the published npm and Python releases while retaining
     readFile(join(DOCS_ROOT, 'src', 'content', 'docs', 'frameworks', `${name}.mdx`), 'utf8');
   for (const name of ['crewai', 'autogen']) {
     const source = await framework(name);
-    assert.match(source, /0.11.2 is published on npm/);
-    assert.match(source, /npm install --save-exact @agentdomain\/mcp-server@0.11.2/);
-    assert.ok(source.includes(`python -m pip install agentdomain-${name}==0.11.2`));
+    assert.match(source, /0.12.0 is published on npm/);
+    assert.match(source, /npm install --save-exact @agentdomain\/mcp-server@0.12.0/);
+    assert.ok(source.includes(`python -m pip install agentdomain-${name}==0.12.0`));
     assert.ok(source.includes(`python -m pip install ./packages/${name}-plugin`));
     assert.ok(source.includes(`from agentdomain_${name} import`));
     assert.match(source, /passed scoped Windows and Linux/);
@@ -184,19 +184,19 @@ test('framework guides pin the published npm and Python releases while retaining
     assert.doesNotMatch(source, /source-build targets|until a matching npm release/i);
   }
   const crewai = await framework('crewai');
-  assert.match(crewai, /\*\*0.11.2 is published on PyPI\*\*/);
+  assert.match(crewai, /\*\*0.12.0 is published on PyPI\*\*/);
   assert.equal(
     markdownLinkTarget(crewai, '`agentdomain-crewai`'),
-    'https://pypi.org/project/agentdomain-crewai/0.11.2/',
+    'https://pypi.org/project/agentdomain-crewai/0.12.0/',
   );
   assert.equal(
     /```bash\r?\n([\s\S]*?)\r?\n```/.exec(crewai)?.[1].replaceAll('\r\n', '\n'),
-    'python -m pip install agentdomain-crewai==0.11.2\nnpm install --save-exact @agentdomain/mcp-server@0.11.2',
+    'python -m pip install agentdomain-crewai==0.12.0\nnpm install --save-exact @agentdomain/mcp-server@0.12.0',
   );
   assert.match(crewai, /For source development, install from the reviewed public repository root/);
   assert.equal(
     markdownLinkTarget(crewai, 'dated release evidence'),
-    'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.2',
+    'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.12.0',
   );
   assert.match(crewai, /records registry metadata and CI artifact comparison/);
   assert.match(crewai, /verified cryptographic\s+attestations for both artifacts/);
@@ -205,19 +205,19 @@ test('framework guides pin the published npm and Python releases while retaining
     /release candidate|not yet published|After the Python registry release is verified/,
   );
   const autogen = await framework('autogen');
-  assert.match(autogen, /\*\*0.11.2 is published on PyPI\*\*/);
+  assert.match(autogen, /\*\*0.12.0 is published on PyPI\*\*/);
   assert.equal(
     markdownLinkTarget(autogen, '`agentdomain-autogen`'),
-    'https://pypi.org/project/agentdomain-autogen/0.11.2/',
+    'https://pypi.org/project/agentdomain-autogen/0.12.0/',
   );
   assert.equal(
     /```bash\r?\n([\s\S]*?)\r?\n```/.exec(autogen)?.[1].replaceAll('\r\n', '\n'),
-    'python -m pip install agentdomain-autogen==0.11.2\nnpm install --save-exact @agentdomain/mcp-server@0.11.2',
+    'python -m pip install agentdomain-autogen==0.12.0\nnpm install --save-exact @agentdomain/mcp-server@0.12.0',
   );
   assert.match(autogen, /For source development, install from the reviewed public repository root/);
   assert.equal(
     markdownLinkTarget(autogen, 'dated release evidence'),
-    'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.2',
+    'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.12.0',
   );
   assert.match(autogen, /records matching registry metadata and CI artifacts/);
   assert.match(autogen, /verified cryptographic\s+attestations for both artifacts/);
@@ -226,12 +226,12 @@ test('framework guides pin the published npm and Python releases while retaining
     /release candidate|not yet published|After the Python registry release is verified|before publication|still pending/,
   );
   const langchain = await framework('langchain');
-  assert.match(langchain, /`@agentdomain\/langchain-plugin` \*\*0.11.2 is published on npm\*\*/);
+  assert.match(langchain, /`@agentdomain\/langchain-plugin` \*\*0.12.0 is published on npm\*\*/);
   assert.match(
     langchain,
-    /```bash\s+npm install @agentdomain\/langchain-plugin@0.11.2 @langchain\/core@\^1\.2\.11\s+```/,
+    /```bash\s+npm install @agentdomain\/langchain-plugin@0.12.0 @langchain\/core@\^1\.2\.11\s+```/,
   );
-  assert.match(langchain, /0.11.2 are published on npm/);
+  assert.match(langchain, /0.12.0 are published on npm/);
   assert.match(langchain, /published by\s+GitHub Actions OIDC with signed provenance/);
   assert.match(
     langchain,
@@ -239,7 +239,7 @@ test('framework guides pin the published npm and Python releases while retaining
   );
   assert.equal(
     markdownLinkTarget(langchain, 'publication follow-up'),
-    'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.11.2',
+    'https://github.com/Talvono/AgentDomain/releases/tag/npm-v0.12.0',
   );
   assert.match(langchain, /source manifest does not query or establish registry publication/);
   assert.match(langchain, /For source development, build from the reviewed public repository root/);
@@ -255,7 +255,7 @@ test('framework guides pin the published npm and Python releases while retaining
     join(DOCS_ROOT, 'src', 'content', 'docs', 'guides', 'renewal.mdx'),
     'utf8',
   );
-  assert.match(renewal, /published SDK \*\*0.11.2\*\*/);
+  assert.match(renewal, /published SDK \*\*0.12.0\*\*/);
   assert.doesNotMatch(renewal, /source-build target/);
 });
 
