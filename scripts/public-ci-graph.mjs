@@ -109,7 +109,7 @@ packages['apps/docs'] = {
 const configHashes = {
   'turbo.json': '9f279fde674c92c099aa1cb74be773f150abe73b660f66fee188ecf846a33298',
   'pnpm-workspace.yaml': '1b57bbcadad5a4179fcfe1aa68a98f8cd64cf92d5317f77fe751098eb231c44e',
-  'pnpm-lock.yaml': '57067b8369e2846551e3231649949e2ba9fdeeaf3bb24edf4a20446f92ec7b1e',
+  'pnpm-lock.yaml': '157b7edfe65ffea17f1e8d0b4eef3cb1d3f4a08dbd972fbe407b8dedac6e29dd',
   'tsconfig.base.json': 'b21bc7c97e0995f7e6425d13ae56418504c299cdebd079c7f806c7af80ed7e6d',
   'contracts/package.json': '8da7137af5286fd6d55c8ef3c27b669d422b626fb97a67a7a2a1dfd722a5c317',
   'packages/shared/tsconfig.json':
