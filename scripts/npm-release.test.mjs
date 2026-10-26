@@ -497,7 +497,7 @@ test('Python publishing stages a fixed verified subset before the pinned OIDC ac
   const upload = steps.at(-1);
   assert.match(
     upload,
-    /^        uses: pypa\/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release\/v1$/m,
+    /^        uses: pypa\/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release\/v1$/m,
   );
   assert.match(upload, /^          packages-dir: release-inputs\/publish-dist\/$/m);
   assert.match(upload, /^          attestations: true$/m);
