@@ -93,9 +93,9 @@ test('repository pins reviewed production dependencies and excludes unsafe graph
   const rootPackage = JSON.parse(rootPackageText);
   const frontendPackage = JSON.parse(frontendPackageText);
 
-  assert.equal(rootPackage.pnpm.overrides['qs@<6.16.0'], '6.16.0');
-  assert.match(lockfile, /qs@6\.16\.0:/);
-  assert.doesNotMatch(lockfile, /qs@6\.15\.3:/);
+  assert.equal(rootPackage.pnpm.overrides['qs@<6.16.2'], '6.16.2');
+  assert.match(lockfile, /qs@6\.16\.2:/);
+  assert.doesNotMatch(lockfile, /qs@6\.16\.0:/);
   assert.equal(rootPackage.pnpm.overrides['fast-uri@>=3.0.0 <3.1.9'], '3.1.9');
   assert.equal(frontendPackage.dependencies.next, '16.4.2');
   assert.equal(frontendPackage.devDependencies['eslint-config-next'], '16.4.2');
